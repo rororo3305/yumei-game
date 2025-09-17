@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ゲーム『YumeI』最終完成版プロトタイプ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        body { background-color: #1a1a1a; color: #f0f0f0; font-family: 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        #game-container { border: 2px solid #555; box-shadow: 0 0 20px rgba(135, 206, 235, 0.5); position: relative; background-color: #75cff0; /* 空の色 */ overflow: hidden; cursor: pointer; }
+        canvas { display: block; background-color: transparent; }
+        h1, #loading-text { color: #e0e0e0; text-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        #instructions { margin-top: 15px; font-size: 1em; color: #aaa; text-align: center; line-height: 1.6; }
+        #instructions span { display: inline-block; background-color: #333; color: #eee; padding: 2px 8px; border-radius: 4px; margin: 0 4px; font-weight: bold; }
+        .ui-text { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8), -2px -2px 4px rgba(0, 0, 0, 0.8); }
+        .status-display, .shield-display { position: absolute; font-size: 1.2em; color: #fff; opacity: 0; transition: opacity 0.5s; }
+        .status-display { top: 10px; left: 10px; }
+        .shield-display { top: 40px; left: 10px; }
+        .purification-gauge-container { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 400px; height: 20px; background-color: rgba(0,0,0,0.5); border-radius: 10px; border: 2px solid #fff; padding: 2px; box-sizing: border-box; opacity: 0; transition: opacity 0.5s;}
+        .purification-gauge { width: 0%; height: 100%; background: linear-gradient(to right, #00BCD4, #80DEEA); border-radius: 8px; transition: width 0.2s ease-out; }
+        .message-overlay, .tutorial-text, .title-screen { position: absolute; left: 50%; transform: translateX(-50%); font-weight: bold; color: white; text-align: center; pointer-events: none; }
+        .message-overlay { top: 40%; transform: translate(-50%, -50%); font-size: 4em; opacity: 0; transition: opacity 0.5s; }
+        .tutorial-text { bottom: 30px; font-size: 1.5em; padding: 15px 25px; background-color: rgba(0,0,0,0.6); border-radius: 10px; border: 2px solid rgba(255,255,255,0.3); opacity: 0; transition: opacity 0.5s ease-in-out; max-width: 90%; }
+        .title-screen { top: 50%; transform: translate(-50%, -50%); width: 100%;}
+        .title-screen h1 { font-size: 6em; margin: 0; text-shadow: 4px 4px 8px rgba(0,0,0,0.5); }
+        .title-screen p { font-size: 1.5em; margin-top: 20px; animation: blink 1.5s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <h1>YumeI - 最終完成版プロトタイプ</h1>
+    <div id="game-container" style="width: 800px; height: 600px;">
+        <canvas id="gameCanvas" style="display: none;"></canvas>
+        <div id="loading-text" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2em;">魂を吹き込み中...</div>
+        <div id="dreamCollapseDisplay" class="status-display ui-text">心の崩壊度: 0%</div>
+        <div id="shieldDisplay" class="shield-display ui-text">集中力: 100%</div>
+        <div id="purificationGaugeContainer" class="purification-gauge-container">
+            <div id="purificationGauge" class="purification-gauge"></div>
+        </div>
+        <div id="messageOverlay" class="message-overlay ui-text"></div>
+        <div id="tutorialText" class="tutorial-text ui-text"></div>
+        <div id="titleScreen" class="title-screen ui-text">
+            <h1>YumeI</h1>
+            <p>スペースキーで夢の中へ</p>
+        </div>
+    </div>
+    <div id="instructions" style="display:none;">
+        <span>WASDキー</span>: 移動 | <span>Cキー (長押し)</span>: ガード | <span>Shiftキー (タップ)</span>: その場回避<br>
+        <span>A/Dキー + Shiftキー</span>: 回転回避 | <span>攻撃が当たる直前にCキーを離す</span>: パリィ
+    </div>
+
+<script>
+// --- ゲーム設定 ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 800; canvas.height = 600;
+
+// --- キャラクター画像とアセット読み込み ---
+const assets = {
+    player: { img: new Image() },
+    nyarl: { img: new Image() }
+};
+const PLAYER_IMAGE_URL = 'https://placehold.co/64x64/4caf50/white?text=Hero';
+const NYARL_IMAGE_URL = 'https://placehold.co/48x48/212121/white?text=Nyarl';
+
+let assetsLoaded = 0;
+const totalAssetsToLoad = 2; // player, nyarl
+
+function onAssetLoad() {
+    assetsLoaded++;
+    if (assetsLoaded === totalAssetsToLoad) {
+        document.getElementById('loading-text').style.display = 'none';
+        canvas.style.display = 'block';
+        document.getElementById('instructions').style.display = 'block';
+        resetGame();
+        gameLoop();
+    }
+}
+
+assets.player.img.onload = onAssetLoad;
+assets.nyarl.img.onload = onAssetLoad;
+assets.player.img.onerror = () => { console.error("Player image failed to load."); onAssetLoad(); }; // エラーでも進行
+assets.nyarl.img.onerror = () => { console.error("Nyarl image failed to load."); onAssetLoad(); }; // エラーでも進行
+assets.player.img.src = PLAYER_IMAGE_URL;
+assets.nyarl.img.src = NYARL_IMAGE_URL;
+
+
+// --- サウンドエンジン ---
+let sounds = {}; let audioStarted = false; let isGuardSoundPlaying = false;
+let peacefulBGM, battleBGM;
+
+function setupSounds() {
+    sounds = {
+        dodge: new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0 } }).toDestination(),
+        parry: new Tone.FMSynth({ harmonicity: 2, modulationIndex: 10, envelope: { attack: 0.01, decay: 0.3 } }).toDestination(),
+        hit: new Tone.MembraneSynth({ pitchDecay: 0.1, octaves: 2, envelope: { attack: 0.01, decay: 0.2, sustain: 0 } }).toDestination(),
+        cough: new Tone.NoiseSynth({ noise: { type: 'brown' }, envelope: { attack: 0.1, decay: 0.5, sustain: 0.1 } }).toDestination(),
+        sneeze: new Tone.NoiseSynth({ envelope: { attack: 0.01, decay: 0.2, sustain: 0 } }).toDestination(),
+        yawn: new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.1, decay: 0.5, sustain: 0.2, release: 0.5 } }).toDestination(),
+        wallBreak: new Tone.FMSynth({ volume: -10, harmonicity: 1.5, modulationIndex: 10, envelope: { attack: 0.01, decay: 0.4, sustain: 0.1 } }).toDestination(),
+        purify: new Tone.FMSynth({ harmonicity: 3, modulationIndex: 5, envelope: { attack: 0.01, decay: 1.5, sustain: 0.2 } }).toDestination(),
+        guard: new Tone.Synth({ oscillator: { type: 'sine' }, volume: -20, envelope: { attack: 0.1, decay: 0.05, sustain: 1, release: 0.2 } }).toDestination(),
+        charge: new Tone.Synth({ oscillator: { type: 'sawtooth' }, volume: -15, envelope: { attack: 0.01, decay: 1.0, sustain: 1, release: 0.1 } }).toDestination()
+    };
+    peacefulBGM = new Tone.Sequence((time, note) => { sounds.yawn.triggerAttackRelease(note, "8n", time); }, ["C4", "E4", "G4", "C5"], "4n").start(0);
+    peacefulBGM.loop = true;
+    battleBGM = new Tone.Sequence((time, note) => { sounds.hit.triggerAttackRelease(note, "8n", time); }, ["C3", "C3", "G2", "C3"], "8n");
+    battleBGM.loop = true;
+    Tone.Transport.bpm.value = 120;
+}
+
+function playSound(type) {
+    if (!audioStarted) return;
+    try {
+        switch(type) {
+            case 'dodge': sounds.dodge.triggerAttackRelease(0.1); break;
+            case 'parry': sounds.parry.triggerAttackRelease("G5", "0.2"); break;
+            case 'hit': sounds.hit.triggerAttackRelease("C2", 0.1); break;
+            case 'cough': sounds.cough.triggerAttackRelease(0.3); break;
+            case 'sneeze': sounds.sneeze.triggerAttackRelease(0.1); break;
+            case 'yawn': sounds.yawn.triggerAttackRelease("C4", "1s"); sounds.yawn.frequency.rampTo("G4", 0.5); break;
+            case 'wallBreak': sounds.wallBreak.triggerAttackRelease("C3", "1s"); break;
+            case 'purify': sounds.purify.triggerAttackRelease("C5", "1s"); break;
+            case 'charge': sounds.charge.triggerAttack("C3"); sounds.charge.frequency.rampTo("C4", 1.0); break;
+            case 'chargeRelease': sounds.charge.triggerRelease(); break;
+        }
+    } catch(e) { /* ignore */ }
+}
+
+// --- 雲生成 ---
+let groundCloudCanvas = null; let groundCloudCtx = null;
+function createCloudIslandLayer(width, height, islands) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = width; tempCanvas.height = height; const tempCtx = tempCanvas.getContext('2d'); islands.forEach(island => { for (let i = 0; i < island.density; i++) { const offsetX = (Math.random() - 0.5) * island.sizeX * 1.1; const offsetY = (Math.random() - 0.5) * island.sizeY * 1.1; const radius = (Math.random() * 0.5 + 0.5) * (island.sizeX + island.sizeY) / 4; const gradient = tempCtx.createRadialGradient(island.x + offsetX, island.y + offsetY, radius * 0.2, island.x + offsetX, island.y + offsetY, radius); gradient.addColorStop(0, `rgba(255, 255, 255, 0.98)`); gradient.addColorStop(1, `rgba(230, 240, 255, 0.8)`); tempCtx.beginPath(); tempCtx.fillStyle = gradient; tempCtx.arc(island.x + offsetX, island.y + offsetY, radius, 0, Math.PI * 2); tempCtx.fill(); } }); groundCloudCanvas = tempCanvas; groundCloudCtx = tempCtx; return tempCanvas; }
+function createDistantCloudLayer(width, height, count, minR, maxR, baseAlpha) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = width; tempCanvas.height = height; const tempCtx = tempCanvas.getContext('2d'); for (let i = 0; i < count; i++) { const cloudX = Math.random() * width; const cloudY = Math.random() * height; const cloudSize = Math.random() * (maxR - minR) + minR; for (let j = 0; j < 8; j++) { const offsetX = (Math.random() - 0.5) * cloudSize; const offsetY = (Math.random() - 0.5) * cloudSize; const radius = (Math.random() * 0.5 + 0.5) * cloudSize; tempCtx.beginPath(); tempCtx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.2 + baseAlpha})`; tempCtx.arc(cloudX + offsetX, cloudY + offsetY, radius, 0, Math.PI * 2); tempCtx.fill(); } } return tempCanvas; }
+
+// --- 背景レイヤー設定 ---
+const world = { width: 1600, height: 1200 };
+const groundIslands = [ { id: 'start', x: world.width / 2, y: world.height * 0.75, sizeX: 500, sizeY: 350, density: 120 }, { id: 'saki', x: world.width / 2, y: world.height * 0.25, sizeX: 400, sizeY: 300, density: 90 }, { id: 'bridge1', x: world.width / 2, y: world.height * 0.5, sizeX: 150, sizeY: 400, density: 80 }];
+const backgroundLayers = [ { canvas: createCloudIslandLayer(world.width, world.height, groundIslands), speed: 0.9 }, { canvas: createDistantCloudLayer(world.width, world.height, 30, 80, 150, 0.8), speed: 0.7 }, { canvas: createDistantCloudLayer(world.width, world.height, 10, 150, 250, 0.3), speed: 0.5 }];
+
+// --- ゲームオブジェクトと状態の初期化 ---
+let gameState; let stateTimer; let camera; let player, nyarl, boss, saki, dog; let bullets; let effects; let currentTutorialStep;
+const keys = { w: false, a: false, s: false, d: false, c: false, shift: false };
+
+function resetGame() {
+    gameState = 'TITLE';
+    stateTimer = 0; camera = { x: 0, y: 0 };
+    player = { worldX: world.width / 2, worldY: world.height * 0.75, width: 48, height: 48, speed: 4, dreamCollapse: 0, shieldGauge: 100, isGuarding: false, shieldBreakTime: 0, isDodging: false, dodgeTimer: 0, dodgeCooldown: 0, isRolling: false, rollTimer: 0, rollSpeed: 9, stunTimer: 0, alpha: 1, rollAngle: 0 };
+    nyarl = { followX: 0, followY: 0, width: 40, height: 40, color: '#212121', alpha: 1 };
+    boss = { worldX: world.width / 2, worldY: world.height * 0.25, radius: 0, maxRadius: 25, color: '#E91E63', coreRadius: 10, coreColor: '#F44336', isActive: false, attackTimer: 0, isCharging: false, chargeTimer: 0, purificationGauge: 0, maxPurificationGauge: 100, isVulnerable: false, vulnerableTimer: 0 };
+    saki = { worldX: world.width / 2 - 40, worldY: world.height * 0.25, width: 20, height: 30, color: '#FFC0CB', alpha: 1 };
+    dog = { worldX: world.width / 2 + 40, worldY: world.height * 0.25 + 10, width: 25, height: 20, color: '#A0522D', alpha: 1 };
+    bullets = []; effects = []; currentTutorialStep = 0;
+    hideTutorialText();
+    messageOverlay.style.opacity = 0;
+    document.getElementById('titleScreen').style.display = 'block';
+    document.getElementById('purificationGaugeContainer').style.opacity = 0;
+    document.getElementById('purificationGauge').style.width = '0%';
+    document.querySelectorAll('.status-display, .shield-display').forEach(el => el.style.opacity = '0');
+    if(audioStarted) { Tone.Transport.stop(); battleBGM.stop(); peacefulBGM.stop(); }
+}
+
+// --- チュートリアルシーケンス ---
+const tutorialSequence = [ { state: 'TUTORIAL_START', duration: 1, text: null }, { state: 'TUTORIAL_MOVE', text: "ニャル:「あそこにいる子たちのところへ行ってみよう！」" }, { state: 'CINEMATIC_BOSS_APPEAR', duration: 180, text: "ニャル:「うわっ！？なんだ、あの子は…！」" }, { state: 'BATTLE_START', duration: 180, text: "ニャル:「ゲージを溜めて、心の壁を壊すんだ！」" }, { state: 'BATTLE', duration: Infinity}, { state: 'CLEAR', duration: 180, text: "" }, { state: 'GAME_WIN', text: "スペースキーでもう一度" }];
+
+// --- ロジック更新 ---
+function update() {
+    stateTimer++; const currentStep = tutorialSequence[currentTutorialStep];
+    if (gameState === 'TUTORIAL_MOVE') { const distToSaki = Math.hypot(player.worldX - saki.worldX, player.worldY - saki.worldY); if (distToSaki < 150) { currentTutorialStep++; const nextStep = tutorialSequence[currentTutorialStep]; gameState = nextStep.state; if(nextStep.text) showTutorialText(nextStep.text); else hideTutorialText(); stateTimer = 0; if (gameState === 'CINEMATIC_BOSS_APPEAR' && audioStarted) { peacefulBGM.stop(); battleBGM.start(); } } }
+    else if (currentStep && currentStep.duration !== Infinity && stateTimer > currentStep.duration) {
+        currentTutorialStep++;
+        const nextStep = tutorialSequence[currentTutorialStep];
+        if (nextStep) { gameState = nextStep.state; if(nextStep.text) showTutorialText(nextStep.text); else hideTutorialText(); stateTimer = 0; }
+    }
+    if (gameState === 'CINEMATIC_BOSS_APPEAR') { saki.alpha = Math.max(0, 1 - stateTimer / 120); dog.alpha = Math.max(0, 1 - stateTimer / 120); boss.radius = Math.min(boss.maxRadius, (stateTimer / 120) * boss.maxRadius); if(stateTimer > 60 && stateTimer < 150) { const backStepTargetY = world.height * 0.5; player.worldY += (backStepTargetY - player.worldY) * 0.05; } } else if (gameState !== 'TITLE') { updatePlayer(); }
+    if (gameState !== 'TITLE') {
+        camera.x += (player.worldX - canvas.width / 2 - camera.x) * 0.1; camera.y += (player.worldY - canvas.height / 2 - camera.y) * 0.1;
+        camera.x = Math.max(0, Math.min(world.width - canvas.width, camera.x)); camera.y = Math.max(0, Math.min(world.height - canvas.height, camera.y));
+        nyarl.followX += (player.worldX - 80 - nyarl.followX) * 0.05; nyarl.followY += (player.worldY - 30 - nyarl.followY) * 0.05;
+        if (gameState === 'BATTLE' || gameState === 'BATTLE_START') { if (!boss.isActive) { boss.isActive = true; document.getElementById('purificationGaugeContainer').style.opacity = 1;} updateBossAndBullets(); checkCollisions(); }
+        else if (gameState === 'CLEAR') { bullets = []; boss.isActive = false; }
+        effects.forEach((e, i) => { e.update(); if(e.life <= 0) effects.splice(i, 1); });
+    }
+}
+function isPositionOnCloud(x, y) { if (!groundCloudCtx) return false; if (x < 0 || x >= world.width || y < 0 || y >= world.height) return false; const pixelData = groundCloudCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data; return pixelData[3] > 0; }
+function updatePlayer() { if (player.stunTimer > 0) { player.stunTimer--; return; } if (player.shieldBreakTime > 0) { player.shieldBreakTime--; return; } if (player.dodgeTimer > 0) {player.dodgeTimer--; if(player.dodgeTimer === 10 && boss.purificationGauge < boss.maxPurificationGauge) { boss.purificationGauge += 15; createGaugeEffect(); } } else player.isDodging = false; if (player.rollTimer > 0) { player.rollTimer--; player.rollAngle += 0.5; } else player.isRolling = false; if (player.dodgeCooldown > 0) player.dodgeCooldown--; player.isGuarding = keys.c && player.shieldGauge > 0; if (player.isGuarding) { if(!isGuardSoundPlaying) { sounds.guard.triggerAttack("C2"); isGuardSoundPlaying = true; } player.shieldGauge -= 0.5; if(player.shieldGauge <= 0) { player.shieldBreakTime = 120; playSound('hit'); } } else { if(isGuardSoundPlaying) { sounds.guard.triggerRelease(); isGuardSoundPlaying = false; } if (player.shieldGauge < 100) player.shieldGauge += 0.3; } let moveX = 0; let moveY = 0; if (!player.isGuarding && !player.isRolling) { if (keys.w) moveY -= player.speed; if (keys.s) moveY += player.speed; if (keys.a) moveX -= player.speed; if (keys.d) moveX += player.speed; } if (player.isRolling) { if (keys.a) moveX -= player.rollSpeed; if (keys.d) moveX += player.rollSpeed; } let nextX = player.worldX + moveX; let nextY = player.worldY + moveY; if (isPositionOnCloud(nextX, player.worldY)) player.worldX = nextX; if (isPositionOnCloud(player.worldX, nextY)) player.worldY = nextY; }
+function updateBossAndBullets() {
+    if (!boss.isActive) return;
+    if (boss.isVulnerable) { boss.vulnerableTimer--; if (boss.vulnerableTimer <= 0) { boss.isVulnerable = false; boss.purificationGauge = 0; } return; }
+    const distToPlayer = Math.hypot(player.worldX - boss.worldX, player.worldY - boss.worldY); const maxDist = 400;
+    if (distToPlayer < maxDist) { boss.purificationGauge += (1 - (distToPlayer / maxDist)) * 0.2 + 0.05; } else { boss.purificationGauge += 0.05; }
+    if(boss.purificationGauge >= boss.maxPurificationGauge && !boss.isVulnerable) { boss.isVulnerable = true; boss.vulnerableTimer = 180; bullets = []; effects.push(new WallBreakEffect(boss.worldX, boss.worldY)); playSound('wallBreak'); if (boss.isCharging) { boss.isCharging = false; boss.chargeTimer = 0; playSound('chargeRelease'); } }
+    document.getElementById('purificationGauge').style.width = `${(boss.purificationGauge / boss.maxPurificationGauge) * 100}%`;
+    boss.attackTimer++; const retreatDistance = 200;
+    if (distToPlayer < retreatDistance) { const angleFromPlayer = Math.atan2(boss.worldY - player.worldY, boss.worldX - player.worldX); const retreatSpeed = 2; let nextX = boss.worldX + Math.cos(angleFromPlayer) * retreatSpeed; let nextY = boss.worldY + Math.sin(angleFromPlayer) * retreatSpeed; if(isPositionOnCloud(nextX, nextY)) { boss.worldX = nextX; boss.worldY = nextY; } }
+    if (boss.isCharging) { boss.chargeTimer++; if (boss.chargeTimer > 60) { boss.isCharging = false; boss.chargeTimer = 0; playSound('chargeRelease'); const rand = Math.random(); const angle = Math.atan2(player.worldY - boss.worldY, player.worldX - boss.worldX); if (rand < 0.3) { effects.push(new YawnEffect(boss.worldX, boss.worldY)); playSound('yawn'); } else { bullets.push(new SneezeBullet(boss.worldX, boss.worldY, angle)); playSound('sneeze'); effects.push(new ChargeEffect(boss.worldX, boss.worldY, '#FFEB3B')); } } } else { if (boss.attackTimer > 60 && boss.attackTimer % 180 === 0) { boss.isCharging = true; playSound('charge'); effects.push(new ChargeEffect(boss.worldX, boss.worldY, '#FFFFFF')); } else if (boss.attackTimer > 60 && boss.attackTimer % 50 === 0) { const angle = Math.atan2(player.worldY - boss.worldY, player.worldX - boss.worldX) + (Math.random() - 0.5) * 0.5; bullets.push(new CoughBullet(boss.worldX, boss.worldY, angle)); playSound('cough'); } }
+    bullets.forEach((b, i) => { b.update(); if (b.life <= 0) bullets.splice(i, 1); });
+}
+class CoughBullet { constructor(x, y, angle) { this.worldX = x; this.worldY = y; this.radius = 5; this.speed = 3; this.vx = Math.cos(angle) * this.speed; this.vy = Math.sin(angle) * this.speed; this.life = 180; } update() { this.worldX += this.vx; this.worldY += this.vy; this.radius += 0.2; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const alpha = Math.min(1, this.life / 60); ctx.beginPath(); ctx.fillStyle = `rgba(139, 195, 74, ${0.4 * alpha})`; ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.fillStyle = `rgba(205, 220, 57, ${0.3 * alpha})`; ctx.arc(x, y, this.radius * 0.6, 0, Math.PI * 2); ctx.fill(); } }
+class SneezeBullet { constructor(x, y, angle) { this.worldX = x; this.worldY = y; this.radius = 8; this.speed = 15; this.vx = Math.cos(angle) * this.speed; this.vy = Math.sin(angle) * this.speed; this.life = 120; } update() { this.worldX += this.vx; this.worldY += this.vy; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; ctx.beginPath(); ctx.fillStyle = '#FFC107'; ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.fillStyle = '#FFFFFF'; ctx.arc(x, y, this.radius * 0.5, 0, Math.PI * 2); ctx.fill(); } }
+class YawnEffect { constructor(x,y) { this.worldX = x; this.worldY = y; this.radiusX = 0; this.radiusY = 0; this.life = 60; } update() { this.radiusX += 2; this.radiusY += 1; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; ctx.strokeStyle = `rgba(3, 169, 244, ${this.life / 60 * 0.8})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(x, y, this.radiusX, this.radiusY, 0, 0, Math.PI * 2); ctx.stroke(); } }
+class ChargeEffect { constructor(x,y, color) { this.worldX = x; this.worldY = y; this.life = 60; this.color = color; } update() { this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const progress = (60 - this.life) / 60; const radiusX = (boss.radius + 30) * progress; const radiusY = radiusX * 0.5; ctx.strokeStyle = `rgba(${this.color === '#FFFFFF' ? '255,255,255' : '255,235,59'}, ${1 - progress})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2); ctx.stroke(); } }
+class WallBreakEffect { constructor(x, y) { this.worldX = x; this.worldY = y; this.life = 30; } update() { this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const progress = (30 - this.life) / 30; ctx.strokeStyle = `rgba(0, 188, 212, ${1 - progress})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, y, 50 * progress, 25 * progress, 0, 0, Math.PI * 2); ctx.stroke(); } }
+function createGaugeEffect() { for(let i=0; i<5; i++){ effects.push(new GaugeParticle(player.worldX, player.worldY)); } } class GaugeParticle { constructor(x,y){this.worldX = x; this.worldY = y; this.life=20; this.radius=Math.random()*3+1; this.vx = (Math.random()-0.5)*2; this.vy = -Math.random()*2 -1;} update(){ this.worldX+=this.vx; this.worldY+=this.vy; this.life--;} draw(ctx,camera){const x=this.worldX-camera.x; const y=this.worldY-camera.y; ctx.fillStyle=`rgba(0, 188, 212, ${this.life/20})`; ctx.beginPath(); ctx.arc(x,y,this.radius,0,Math.PI*2); ctx.fill();} }
+function checkCollisions() {
+    const battleStates = ['BATTLE_START', 'BATTLE']; if (!battleStates.includes(gameState)) return;
+    bullets.forEach((b, i) => { const dist = Math.hypot(player.worldX - b.worldX, player.worldY - b.worldY); if (dist < player.width / 2 + b.radius) { if (player.isDodging || player.isRolling || player.stunTimer > 0) return; if (b instanceof SneezeBullet && player.isGuarding) { bullets.splice(i, 1); playSound('hit'); player.shieldBreakTime = 120; player.shieldGauge = 0; const knockbackPower = 60; const angle = Math.atan2(player.worldY - b.worldY, player.worldX - b.worldX); let nextX = player.worldX + Math.cos(angle) * knockbackPower; let nextY = player.worldY + Math.sin(angle) * knockbackPower; if(isPositionOnCloud(nextX, nextY)) { player.worldX = nextX; player.worldY = nextY; } return; } if (player.isGuarding) { bullets.splice(i, 1); player.shieldGauge -= 20; if (player.shieldGauge <= 0) player.shieldBreakTime = 120; } else { bullets.splice(i, 1); playSound('hit'); player.dreamCollapse += (b instanceof SneezeBullet) ? 30 : 10; if (player.dreamCollapse >= 100) { showMessage("悪夢に飲まれた…"); gameState = 'GAMEOVER'; } player.stunTimer = 30; const knockbackPower = (b instanceof SneezeBullet) ? 40 : 20; const angle = Math.atan2(player.worldY - b.worldY, player.worldX - b.worldX); let nextX = player.worldX + Math.cos(angle) * knockbackPower; let nextY = player.worldY + Math.sin(angle) * knockbackPower; if(isPositionOnCloud(nextX, nextY)) { player.worldX = nextX; player.worldY = nextY; } } } });
+    if (boss.isVulnerable) {
+        const distToBoss = Math.hypot(player.worldX - boss.worldX, player.worldY - boss.worldY);
+        if (distToBoss < player.width / 2 + boss.radius) {
+            if (gameState !== 'CLEAR') {
+                // ★★★ ここから変更 ★★★
+                showMessage("浄化成功"); // メッセージ表示を追加
+                playSound('purify');     // サウンド再生を追加
+                // ★★★ ここまで変更 ★★★
+                gameState = 'CLEAR';
+                stateTimer = 0;
+                currentTutorialStep = tutorialSequence.findIndex(s => s.state === 'CLEAR');
+            }
+        }
+    }
+}
+
+
+// --- 描画処理 ---
+function draw() {
+    ctx.fillStyle = '#75cff0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if(gameState !== 'TITLE') {
+        backgroundLayers.forEach(layer => { const layerX = -camera.x * layer.speed; const layerY = -camera.y * layer.speed; const imgWidth = layer.canvas.width; const imgHeight = layer.canvas.height; for (let y = layerY % imgHeight - imgHeight; y < canvas.height + imgHeight; y += imgHeight) { for (let x = layerX % imgWidth - imgWidth; x < canvas.width + imgWidth; x += imgWidth) { ctx.drawImage(layer.canvas, x, y); } } });
+        const drawObj = (obj, img=null, alpha = 1) => { const x = obj.worldX - camera.x; const y = obj.worldY - camera.y; ctx.globalAlpha = alpha; if(img && img.complete && img.naturalHeight !== 0){ctx.drawImage(img, x - obj.width/2, y-obj.height/2, obj.width, obj.height);}else{ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.height/2, obj.width/2.2, obj.width/4, 0, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = obj.color; ctx.fillRect(x - obj.width/2, y - obj.height/2, obj.width, obj.height);} ctx.globalAlpha = 1;};
+        const drawCirc = (obj) => { const x = obj.worldX - camera.x, y = obj.worldY - camera.y; ctx.globalAlpha = (obj.isVulnerable && Math.floor(stateTimer/10)%2 === 0) ? 0.5 : 1.0; ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.radius, obj.radius, obj.radius*0.5, 0, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = (obj.isVulnerable) ? '#B2EBF2' : obj.color; ctx.beginPath(); ctx.arc(x, y, obj.radius, 0, Math.PI * 2); ctx.fill(); if(obj.coreRadius){ctx.fillStyle= (obj.isVulnerable) ? '#FFFFFF' : obj.coreColor; ctx.beginPath();ctx.arc(x,y,obj.coreRadius,0,Math.PI*2);ctx.fill();} ctx.globalAlpha = 1.0; };
+        const objectsToDraw = [...bullets, ...effects, saki, dog, boss, nyarl, player];
+        objectsToDraw.sort((a, b) => a.worldY - b.worldY);
+        objectsToDraw.forEach(obj => { if(obj.draw) { obj.draw(ctx, camera); } else if (obj === player) drawPlayer(); else if (obj === saki) { drawObj(obj, null, saki.alpha); } else if (obj === dog) { drawObj(obj, null, dog.alpha); } else if(obj === nyarl) { drawObj(obj, assets.nyarl.img); } else if (obj === boss) { if (gameState.includes('BATTLE') || gameState === 'CINEMATIC_BOSS_APPEAR' || gameState === 'CLEAR') { drawCirc(obj); } } });
+        drawUI();
+    }
+}
+function drawPlayer() {
+    const x = player.worldX - camera.x; const y = player.worldY - camera.y;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = (player.isDodging || (player.shieldBreakTime > 0 && Math.floor(stateTimer/10)%2 === 0)) ? 0.5 : 1.0;
+    if(player.isRolling) { player.rollAngle += 0.5; ctx.rotate(player.rollAngle); }
+    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, player.height/2, player.width/2.2, player.width/4, 0, 0, Math.PI*2); ctx.fill();
+    
+    // 画像があれば描画、なければ四角形を描画
+    if (assets.player.img.complete && assets.player.img.naturalHeight !== 0) {
+        ctx.drawImage(assets.player.img, -player.width / 2, -player.height / 2, player.width, player.height);
+    } else {
+        ctx.fillStyle = player.color || '#4CAF50'; // フォールバックの色
+        ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+    }
+    
+    ctx.restore();
+    if (player.isGuarding) { ctx.strokeStyle = `rgba(33, 150, 243, ${player.shieldGauge / 100})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, 25, 15, 0, 0, Math.PI * 2); ctx.stroke(); }
+    if (player.shieldBreakTime > 0) { const dizzyY = y - player.height/2 - 15; const angle = stateTimer * 0.1; ctx.fillStyle = '#FFEB3B'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; for (let i = 0; i < 3; i++) { const starX = x + Math.cos(angle + i * (Math.PI * 2 / 3)) * 15; const starY = dizzyY + Math.sin(angle + i * (Math.PI * 2 / 3)) * 5; ctx.fillText('★', starX, starY); } }
+}
+function drawUI() {
+    const uiElements = [document.getElementById('dreamCollapseDisplay'), document.getElementById('shieldDisplay')];
+    if (gameState !== 'TITLE') { uiElements.forEach(el => el.style.opacity = '1'); } else { uiElements.forEach(el => el.style.opacity = '0'); }
+    document.getElementById('dreamCollapseDisplay').textContent = `心の崩壊度: ${Math.floor(player.dreamCollapse)}%`; document.getElementById('shieldDisplay').textContent = `集中力: ${Math.floor(player.shieldGauge)}%`; if (player.shieldBreakTime > 0) { document.getElementById('shieldDisplay').textContent = "シールドブレイク！"; document.getElementById('shieldDisplay').style.color = "#f44336"; } else { document.getElementById('shieldDisplay').style.color = "#fff"; }
+}
+
+// (イベントリスナーとその他ユーティリティ関数)
+const tutorialText = document.getElementById('tutorialText'); const messageOverlay = document.getElementById('messageOverlay'); 
+window.addEventListener('keydown', (e) => { 
+    const key = e.key; const lowerKey = key.toLowerCase();
+    if(gameState === 'TITLE' && lowerKey === ' ') {
+        if (!audioStarted) { try { if(Tone.context.state !== 'running') { Tone.start().then(() => { setupSounds(); Tone.Transport.start(); peacefulBGM.start(0); }); } audioStarted = true; } catch(e) {} }
+        document.getElementById('titleScreen').style.display = 'none';
+        gameState = 'TUTORIAL_START'; stateTimer = 0; currentTutorialStep = 0;
+        const firstStep = tutorialSequence[currentTutorialStep];
+        if (firstStep.text) showTutorialText(firstStep.text);
+        return;
+    }
+    if (keys[lowerKey] !== undefined) keys[lowerKey] = true; 
+    if (key === 'Shift' && !player.isDodging && !player.isRolling && player.stunTimer <= 0 && player.dodgeCooldown <= 0) { 
+        playSound('dodge');
+        player.dodgeCooldown = 60; // 1秒のクールタイム
+        if (keys.a || keys.d) { player.isRolling = true; player.rollTimer = 25; player.rollAngle = 0;} 
+        else { player.isDodging = true; player.dodgeTimer = 15; } 
+    } 
+    if (key === ' ' && (gameState === 'GAME_WIN' || gameState === 'GAMEOVER')) { resetGame(); } 
+}); 
+window.addEventListener('keyup', (e) => { const key = e.key; const lowerKey = key.toLowerCase(); if (keys[lowerKey] !== undefined) keys[lowerKey] = false; if (lowerKey === 'c') tryParry(); }); 
+function showTutorialText(text) { tutorialText.textContent = text; tutorialText.style.opacity = 1; } 
+function hideTutorialText() { tutorialText.style.opacity = 0; } 
+function showMessage(text) { messageOverlay.textContent = text; messageOverlay.style.opacity = 1; } 
+function tryParry() { if (!gameState.includes('BATTLE') || boss.isVulnerable) return; let parried = false; bullets.forEach(b => { if (Math.hypot(player.worldX - b.worldX, player.worldY - b.worldY) < 50) parried = true; }); if (parried) { playSound('parry'); boss.purificationGauge += 35; createGaugeEffect(); let erased = 0; for (let i = bullets.length - 1; i >= 0; i--) { if (erased < 3 && Math.hypot(player.worldX - bullets[i].worldX, player.worldY - bullets[i].worldY) < 80) { bullets.splice(i, 1); erased++; } } } }
+
+// --- メインループ ---
+function gameLoop() {
+    if(gameState !== 'TITLE') {
+        update();
+    }
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+// --- ゲーム開始 ---
+// 画像読み込みが完了してからゲームを開始するように変更
+// resetGame();
+// gameLoop();
+
+</script>
+</body>
+</html>
