@@ -63,6 +63,59 @@
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8), -2px -2px 4px rgba(0, 0, 0, 0.8);
         }
 
+        .wasd-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0,0,0,0.4); 
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid rgba(255,255,255,0.4);
+            display: none; 
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .key-row { display: flex; gap: 10px; }
+        .key {
+            width: 50px;
+            height: 50px;
+            background-color: #333;
+            border: 2px solid #555;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #ccc;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .key.pressed {
+            background-color: #81C784; 
+            border-color: #A5D6A7;
+            color: #fff;
+        }
+        
+        .tutorial-text {
+            bottom: 20px; 
+            font-size: 1.1em; 
+            padding: 8px 20px; 
+            background-color: rgba(0, 0, 0, 0.7); 
+            border-radius: 8px; 
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            max-width: 80%; 
+            position: absolute; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            pointer-events: none; 
+            line-height: 1.4;
+        }
+
         .status-display,
         .shield-display {
             position: absolute;
@@ -107,7 +160,6 @@
         }
 
         .message-overlay,
-        .tutorial-text,
         .title-screen {
             position: absolute;
             left: 50%;
@@ -124,18 +176,6 @@
             font-size: 4em;
             opacity: 0;
             transition: opacity 0.5s;
-        }
-
-        .tutorial-text {
-            bottom: 30px;
-            font-size: 1.5em;
-            padding: 15px 25px;
-            background-color: rgba(0, 0, 0, 0.6);
-            border-radius: 10px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
-            max-width: 90%;
         }
 
         .title-screen {
@@ -165,9 +205,19 @@
 </head>
 
 <body>
-    <h1>YumeI - 最終完成版プロトタイプ</h1>
+    <h1>YumeI - チュートリアル</h1>
     <div id="game-container" style="width: 800px; height: 600px;">
         <canvas id="gameCanvas" style="display: none;"></canvas>
+        <div id="wasd-guide" class="wasd-guide">
+            <div class="key-row">
+                <div id="key-w" class="key">W</div>
+            </div>
+            <div class="key-row">
+                <div id="key-a" class="key">A</div>
+                <div id="key-s" class="key">S</div>
+                <div id="key-d" class="key">D</div>
+            </div>
+        </div>
         <div id="loading-text"
             style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2em;">
             魂を吹き込み中...</div>
@@ -184,8 +234,7 @@
         </div>
     </div>
     <div id="instructions" style="display:none;">
-        <span>WASDキー</span>: 移動 | <span>Cキー (長押し)</span>: ガード | <span>Shiftキー (タップ)</span>: その場回避<br>
-        <span>A/Dキー + Shiftキー</span>: 回転回避 | <span>攻撃が当たる直前にCキーを離す</span>: パリィ
+        <span>WASD</span>: 移動 | <span>C</span>: ガード | <span>Shift</span>: 回避
     </div>
 
     <script>
@@ -193,18 +242,16 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 800; canvas.height = 600;
+        const wasdGuide = document.getElementById('wasd-guide');
 
-        // #region キャラクター画像とアセット読み込み 
+        // --- キャラクター画像とアセット読み込み ---
         const assets = {
             player: { img: new Image() },
             nyarl: { img: new Image() }
         };
-        const PLAYER_IMAGE_URL = './images/player.png';
-        const NYARL_IMAGE_URL = './images/nyarl.png';
-<<<<<<< HEAD
-=======
-        // #endregion
->>>>>>> 0be8049be79d61117996ec68d9c1ab609b980be2
+        const PLAYER_IMAGE_URL = 'https://placehold.co/48x48/4caf50/white?text=Hero';
+        const NYARL_IMAGE_URL = 'https://placehold.co/40x40/212121/white?text=Nyarl';
+
 
         let assetsLoaded = 0;
         const totalAssetsToLoad = 2; // player, nyarl
@@ -227,6 +274,7 @@
         assets.player.img.src = PLAYER_IMAGE_URL;
         assets.nyarl.img.src = NYARL_IMAGE_URL;
 
+
         // --- サウンドエンジン ---
         let sounds = {}; let audioStarted = false; let isGuardSoundPlaying = false;
         let peacefulBGM, battleBGM;
@@ -244,341 +292,444 @@
                 guard: new Tone.Synth({ oscillator: { type: 'sine' }, volume: -20, envelope: { attack: 0.1, decay: 0.05, sustain: 1, release: 0.2 } }).toDestination(),
                 charge: new Tone.Synth({ oscillator: { type: 'sawtooth' }, volume: -15, envelope: { attack: 0.01, decay: 1.0, sustain: 1, release: 0.1 } }).toDestination()
             };
-            peacefulBGM = new Tone.Sequence((time, note) => { sounds.yawn.triggerAttackRelease(note, "8n", time); }, ["C4", "E4", "G4", "C5"], "4n").start(0);
+            peacefulBGM = new Tone.Sequence((time, note) => { sounds.yawn.triggerAttackRelease(note, "8n", time); }, ["C4", "E4", "G4", "C5"], "4n");
             peacefulBGM.loop = true;
             battleBGM = new Tone.Sequence((time, note) => { sounds.hit.triggerAttackRelease(note, "8n", time); }, ["C3", "C3", "G2", "C3"], "8n");
             battleBGM.loop = true;
             Tone.Transport.bpm.value = 120;
         }
 
-        function playSound(type) {
-            if (!audioStarted) return;
-            try {
-                switch (type) {
-                    case 'dodge': sounds.dodge.triggerAttackRelease(0.1); break;
-                    case 'parry': sounds.parry.triggerAttackRelease("G5", "0.2"); break;
-                    case 'hit': sounds.hit.triggerAttackRelease("C2", 0.1); break;
-                    case 'cough': sounds.cough.triggerAttackRelease(0.3); break;
-                    case 'sneeze': sounds.sneeze.triggerAttackRelease(0.1); break;
-                    case 'yawn': sounds.yawn.triggerAttackRelease("C4", "1s"); sounds.yawn.frequency.rampTo("G4", 0.5); break;
-                    case 'wallBreak': sounds.wallBreak.triggerAttackRelease("C3", "1s"); break;
-                    case 'purify': sounds.purify.triggerAttackRelease("C5", "1s"); break;
-                    case 'charge': sounds.charge.triggerAttack("C3"); sounds.charge.frequency.rampTo("C4", 1.0); break;
-                    case 'chargeRelease': sounds.charge.triggerRelease(); break;
-                }
-            } catch (e) { /* ignore */ }
-        }
+        function playSound(type) { if (!audioStarted) return; try { switch (type) { case 'dodge': sounds.dodge.triggerAttackRelease(0.1); break; case 'parry': sounds.parry.triggerAttackRelease("G5", "0.2"); break; case 'hit': sounds.hit.triggerAttackRelease("C2", 0.1); break; case 'cough': sounds.cough.triggerAttackRelease(0.3); break; case 'sneeze': sounds.sneeze.triggerAttackRelease(0.1); break; case 'yawn': sounds.yawn.triggerAttackRelease("C4", "1s"); sounds.yawn.frequency.rampTo("G4", 0.5); break; case 'wallBreak': sounds.wallBreak.triggerAttackRelease("C3", "1s"); break; case 'purify': sounds.purify.triggerAttackRelease("C5", "1s"); break; case 'charge': sounds.charge.triggerAttack("C3"); sounds.charge.frequency.rampTo("C4", 1.0); break; case 'chargeRelease': sounds.charge.triggerRelease(); break; } } catch (e) { /* ignore */ } }
+        let groundCloudCanvas = null; let groundCloudCtx = null; function createCloudIslandLayer(width, height, islands) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = width; tempCanvas.height = height; const tempCtx = tempCanvas.getContext('2d'); islands.forEach(island => { for (let i = 0; i < island.density; i++) { const offsetX = (Math.random() - 0.5) * island.sizeX * 1.1; const offsetY = (Math.random() - 0.5) * island.sizeY * 1.1; const radius = (Math.random() * 0.5 + 0.5) * (island.sizeX + island.sizeY) / 4; const gradient = tempCtx.createRadialGradient(island.x + offsetX, island.y + offsetY, radius * 0.2, island.x + offsetX, island.y + offsetY, radius); gradient.addColorStop(0, `rgba(255, 255, 255, 0.98)`); gradient.addColorStop(1, `rgba(230, 240, 255, 0.8)`); tempCtx.beginPath(); tempCtx.fillStyle = gradient; tempCtx.arc(island.x + offsetX, island.y + offsetY, radius, 0, Math.PI * 2); tempCtx.fill(); } }); groundCloudCanvas = tempCanvas; groundCloudCtx = tempCtx; return tempCanvas; } function createDistantCloudLayer(width, height, count, minR, maxR, baseAlpha) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = width; tempCanvas.height = height; const tempCtx = tempCanvas.getContext('2d'); for (let i = 0; i < count; i++) { const cloudX = Math.random() * width; const cloudY = Math.random() * height; const cloudSize = Math.random() * (maxR - minR) + minR; for (let j = 0; j < 8; j++) { const offsetX = (Math.random() - 0.5) * cloudSize; const offsetY = (Math.random() - 0.5) * cloudSize; const radius = (Math.random() * 0.5 + 0.5) * cloudSize; tempCtx.beginPath(); tempCtx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.2 + baseAlpha})`; tempCtx.arc(cloudX + offsetX, cloudY + offsetY, radius, 0, Math.PI * 2); tempCtx.fill(); } } return tempCanvas; }
 
-        // --- 雲生成 ---
-        let groundCloudCanvas = null; let groundCloudCtx = null;
-        function createCloudIslandLayer(width, height, islands) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = width; tempCanvas.height = height; const tempCtx = tempCanvas.getContext('2d'); islands.forEach(island => { for (let i = 0; i < island.density; i++) { const offsetX = (Math.random() - 0.5) * island.sizeX * 1.1; const offsetY = (Math.random() - 0.5) * island.sizeY * 1.1; const radius = (Math.random() * 0.5 + 0.5) * (island.sizeX + island.sizeY) / 4; const gradient = tempCtx.createRadialGradient(island.x + offsetX, island.y + offsetY, radius * 0.2, island.x + offsetX, island.y + offsetY, radius); gradient.addColorStop(0, `rgba(255, 255, 255, 0.98)`); gradient.addColorStop(1, `rgba(230, 240, 255, 0.8)`); tempCtx.beginPath(); tempCtx.fillStyle = gradient; tempCtx.arc(island.x + offsetX, island.y + offsetY, radius, 0, Math.PI * 2); tempCtx.fill(); } }); groundCloudCanvas = tempCanvas; groundCloudCtx = tempCtx; return tempCanvas; }
-        function createDistantCloudLayer(width, height, count, minR, maxR, baseAlpha) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = width; tempCanvas.height = height; const tempCtx = tempCanvas.getContext('2d'); for (let i = 0; i < count; i++) { const cloudX = Math.random() * width; const cloudY = Math.random() * height; const cloudSize = Math.random() * (maxR - minR) + minR; for (let j = 0; j < 8; j++) { const offsetX = (Math.random() - 0.5) * cloudSize; const offsetY = (Math.random() - 0.5) * cloudSize; const radius = (Math.random() * 0.5 + 0.5) * cloudSize; tempCtx.beginPath(); tempCtx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.2 + baseAlpha})`; tempCtx.arc(cloudX + offsetX, cloudY + offsetY, radius, 0, Math.PI * 2); tempCtx.fill(); } } return tempCanvas; }
-
-        // --- 背景レイヤー設定 ---
         const world = { width: 1600, height: 1200 };
         const groundIslands = [{ id: 'start', x: world.width / 2, y: world.height * 0.75, sizeX: 500, sizeY: 350, density: 120 }, { id: 'saki', x: world.width / 2, y: world.height * 0.25, sizeX: 400, sizeY: 300, density: 90 }, { id: 'bridge1', x: world.width / 2, y: world.height * 0.5, sizeX: 150, sizeY: 400, density: 80 }];
         const backgroundLayers = [{ canvas: createCloudIslandLayer(world.width, world.height, groundIslands), speed: 0.9 }, { canvas: createDistantCloudLayer(world.width, world.height, 30, 80, 150, 0.8), speed: 0.7 }, { canvas: createDistantCloudLayer(world.width, world.height, 10, 150, 250, 0.3), speed: 0.5 }];
-
-        // --- ゲームオブジェクトと状態の初期化 ---
-        let gameState; let stateTimer; let camera; let player, nyarl, boss, saki, dog; let bullets; let effects; let currentTutorialStep;
+        
+        let gameState; let stateTimer; let camera; let player, nyarl, boss, saki, dog, demonStain; let bullets; let effects;
         const keys = { w: false, a: false, s: false, d: false, c: false, shift: false };
+        
+        let tutorialState;
+        let wasdCheck = { w: false, a: false, s: false, d: false, all: false };
+        let avoidSuccessCount = 0;
+        let isTimeStopped = false;
+
 
         function resetGame() {
             gameState = 'TITLE';
             stateTimer = 0; camera = { x: 0, y: 0 };
-
-            // ★★★ ここから変更点① ★★★
-            // playerオブジェクトに、回避方向を記憶する`rollDirection`を追加
             player = { worldX: world.width / 2, worldY: world.height * 0.75, width: 48, height: 48, speed: 4, dreamCollapse: 0, shieldGauge: 100, isGuarding: false, shieldBreakTime: 0, isDodging: false, dodgeTimer: 0, dodgeCooldown: 0, isRolling: false, rollTimer: 0, rollSpeed: 9, stunTimer: 0, alpha: 1, rollAngle: 0, rollDirection: 0 };
-            // ★★★ ここまで変更点① ★★★
+            nyarl = { worldX: player.worldX - 80, worldY: player.worldY - 30, width: 40, height: 40, targetX: player.worldX, targetY: player.worldY, targetTimer: 0, alpha: 1, distanceState: 'medium', stateTimer: 180, minRadius: 80, maxRadius: 120, };
+            boss = { worldX: world.width / 2, worldY: world.height * 0.15, radius: 0, maxRadius: 25, alpha: 0, color: '#E91E63', coreRadius: 10, coreColor: '#F44336', isActive: false, attackTimer: 0, isCharging: false, chargeTimer: 0, purificationGauge: 0, maxPurificationGauge: 100, isVulnerable: false, vulnerableTimer: 0 };
+            
+            const chaseCenter = { x: world.width / 2, y: world.height * 0.25 };
+            saki = { worldX: chaseCenter.x + 90, worldY: chaseCenter.y, width: 20, height: 30, alpha: 1, orbitAngle: 0, orbitRadius: 90, orbitSpeed: 0.02, centerX: chaseCenter.x, centerY: chaseCenter.y };
+            dog = { worldX: chaseCenter.x - 90, worldY: chaseCenter.y, width: 25, height: 20, alpha: 1 };
+            demonStain = { worldX: world.width / 2, worldY: 0, radius: 0, alpha: 0, targetY: world.height * 0.20 };
 
-            nyarl = {
-                worldX: player.worldX - 80,
-                worldY: player.worldY - 30,
-                width: 40,
-                height: 40,
-                targetX: player.worldX,
-                targetY: player.worldY,
-                targetTimer: 0,
-                alpha: 1,
-                distanceState: 'medium',
-                stateTimer: 180,
-                minRadius: 80,
-                maxRadius: 120,
-            };
-
-            boss = { worldX: world.width / 2, worldY: world.height * 0.25, radius: 0, maxRadius: 25, color: '#E91E63', coreRadius: 10, coreColor: '#F44336', isActive: false, attackTimer: 0, isCharging: false, chargeTimer: 0, purificationGauge: 0, maxPurificationGauge: 100, isVulnerable: false, vulnerableTimer: 0 };
-            saki = { worldX: world.width / 2 - 40, worldY: world.height * 0.25, width: 20, height: 30, color: '#FFC0CB', alpha: 1 };
-            dog = { worldX: world.width / 2 + 40, worldY: world.height * 0.25 + 10, width: 25, height: 20, color: '#A0522D', alpha: 1 };
-            bullets = []; effects = []; currentTutorialStep = 0;
+            bullets = []; effects = []; 
+            
+            tutorialState = 'START';
+            wasdCheck = { w: false, a: false, s: false, d: false, all: false };
+            avoidSuccessCount = 0;
+            isTimeStopped = false;
+            
             hideTutorialText();
             messageOverlay.style.opacity = 0;
+            wasdGuide.style.display = 'none';
             document.getElementById('titleScreen').style.display = 'block';
             document.getElementById('purificationGaugeContainer').style.opacity = 0;
             document.getElementById('purificationGauge').style.width = '0%';
             document.querySelectorAll('.status-display, .shield-display').forEach(el => el.style.opacity = '0');
-            if (audioStarted) { Tone.Transport.stop(); battleBGM.stop(); peacefulBGM.stop(); }
+            
+            if (audioStarted) { 
+                Tone.Transport.stop(); 
+                Tone.Transport.cancel(0);
+                if (battleBGM) battleBGM.stop();
+                if (peacefulBGM) peacefulBGM.stop();
+            }
         }
+        
+        function updateTutorial() {
+            stateTimer++;
+            switch(tutorialState) {
+                case 'START':
+                    showTutorialText("ニャル:「初めての夢の世界だよ！好きに動いていいよ！」");
+                    wasdGuide.style.display = 'flex';
+                    tutorialState = 'WASD_GUIDE';
+                    break;
+                case 'WASD_GUIDE':
+                    if (wasdCheck.all) {
+                        wasdGuide.style.display = 'none';
+                        showTutorialText("ニャル:「うん、上手だね！あの子たちのところまで行ってみよう！」");
+                        tutorialState = 'GO_TO_SAKI';
+                    }
+                    break;
+                case 'GO_TO_SAKI':
+                     if (Math.hypot(player.worldX - saki.worldX, player.worldY - saki.worldY) < 200) {
+                        showTutorialText("ニャル:「楽しそうだね…」");
+                        tutorialState = 'WATCHING_PLAY';
+                        stateTimer = 0;
+                     }
+                    break;
+                case 'WATCHING_PLAY':
+                    saki.orbitAngle += saki.orbitSpeed;
+                    saki.worldX = saki.centerX + Math.cos(saki.orbitAngle) * saki.orbitRadius;
+                    saki.worldY = saki.centerY + Math.sin(saki.orbitAngle) * saki.orbitRadius;
+                    const targetDogX = saki.centerX + Math.cos(saki.orbitAngle - 0.8) * saki.orbitRadius;
+                    const targetDogY = saki.centerY + Math.sin(saki.orbitAngle - 0.8) * saki.orbitRadius;
+                    dog.worldX += (targetDogX - dog.worldX) * 0.07;
+                    dog.worldY += (targetDogY - dog.worldY) * 0.07;
 
-        // --- チュートリアルシーケンス ---
-        const tutorialSequence = [{ state: 'TUTORIAL_START', duration: 1, text: null }, { state: 'TUTORIAL_MOVE', text: "ニャル:「あそこにいる子たちのところへ行ってみよう！」" }, { state: 'CINEMATIC_BOSS_APPEAR', duration: 180, text: "ニャル:「うわっ！？なんだ、あの子は…！」" }, { state: 'BATTLE_START', duration: 180, text: "ニャル:「ゲージを溜めて、心の壁を壊すんだ！」" }, { state: 'BATTLE', duration: Infinity }, { state: 'CLEAR', duration: 180, text: "" }, { state: 'GAME_WIN', text: "スペースキーでもう一度" }];
-
-
+                    if (stateTimer === 240) showTutorialText("主人公:「…うん」");
+                    if (stateTimer > 720) {
+                        hideTutorialText();
+                        tutorialState = 'STAIN_APPEAR';
+                        stateTimer = 0;
+                    }
+                    break;
+                case 'STAIN_APPEAR':
+                    demonStain.radius = Math.min(50, demonStain.radius + 0.5);
+                    demonStain.alpha = Math.min(0.8, demonStain.alpha + 0.01);
+                    demonStain.worldY += (demonStain.targetY - demonStain.worldY) * 0.02;
+                    if(stateTimer > 120 && dog.alpha > 0) {
+                        if(stateTimer % 40 < 20) { dog.worldY -= 2; } else { dog.worldY += 2; }
+                        if(stateTimer === 121) showTutorialText("ニャル:「…！ なにあれ…？」");
+                    }
+                    if (stateTimer > 300) {
+                        hideTutorialText();
+                        tutorialState = 'DEMON_GROW';
+                        stateTimer = 0;
+                    }
+                    break;
+                case 'DEMON_GROW':
+                    demonStain.alpha = Math.max(0, demonStain.alpha - 0.02);
+                    boss.alpha = Math.min(1, boss.alpha + 0.01);
+                    boss.radius = Math.min(boss.maxRadius, boss.radius + 0.2);
+                    if(stateTimer === 1) showTutorialText("ニャル:「うわっ！？なんだ、あの子は…！」");
+                    if(stateTimer === 60) bullets.push(new CoughBullet(boss.worldX, boss.worldY, 0, saki, true));
+                    if(stateTimer > 120) saki.alpha = Math.max(0, saki.alpha - 0.02);
+                    
+                    if(saki.alpha <= 0 && tutorialState === 'DEMON_GROW'){
+                        stateTimer = 0;
+                        tutorialState = 'DOG_BARKS';
+                    }
+                    break;
+                case 'DOG_BARKS':
+                     dog.targetX = boss.worldX;
+                     dog.worldX += (dog.targetX - dog.worldX) * 0.02;
+                     if(stateTimer % 30 < 15) { dog.worldY -= 3; } else { dog.worldY += 3; }
+                    
+                    if(stateTimer > 120) {
+                        bullets.push(new CoughBullet(boss.worldX, boss.worldY, 0, dog, false, true));
+                        tutorialState = 'DOG_DOWN';
+                        stateTimer = 0;
+                    }
+                    break;
+                case 'DOG_DOWN':
+                    if (stateTimer > 30) dog.alpha = Math.max(0, dog.alpha - 0.02);
+                    if (dog.alpha <= 0 && tutorialState === 'DOG_DOWN') {
+                        showTutorialText("ニャル:「気を付けて！まずは動き回って、攻撃をよく見て！」");
+                        if (audioStarted) { if(peacefulBGM.state === 'started') peacefulBGM.stop(); if(battleBGM.state !== 'started') battleBGM.start(); }
+                        boss.isActive = true; 
+                        document.getElementById('purificationGaugeContainer').style.opacity = 1;
+                        tutorialState = 'BATTLE_AVOID_ONLY';
+                        stateTimer = 0;
+                        gameState = 'TUTORIAL_BATTLE';
+                     }
+                    break;
+                case 'BATTLE_AVOID_ONLY':
+                     if (avoidSuccessCount >= 3) {
+                        isTimeStopped = true;
+                        showTutorialText("ニャル:「今のままじゃ避けきれない！<span>Shiftキー</span>で、その場で素早く回避できるよ！」");
+                        tutorialState = 'LESSON_SPOT_DODGE';
+                     }
+                    break;
+                case 'LESSON_SPOT_DODGE': break;
+                case 'LESSON_ROLL_DODGE': break;
+                case 'LESSON_GUARD': break;
+                case 'BATTLE_END':
+                    if(stateTimer > 180){
+                          showMessage("浄化成功"); 
+                          playSound('purify');
+                          gameState = 'CLEAR';
+                    }
+                    break;
+            }
+        }
+        
         function updateNyarl() {
-            nyarl.stateTimer--;
-            nyarl.targetTimer--;
+            if (!nyarl) return;
+            if (!['WATCHING_PLAY', 'STAIN_APPEAR', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'].includes(tutorialState)) {
+                nyarl.stateTimer--; 
+                nyarl.targetTimer--;
 
-            if (nyarl.stateTimer <= 0) {
-                const possibleStates = ['short', 'medium', 'long'].filter(s => s !== nyarl.distanceState);
-                const newState = possibleStates[Math.floor(Math.random() * possibleStates.length)];
-                nyarl.distanceState = newState;
+                if (nyarl.stateTimer <= 0) {
+                    const possibleStates = ['short', 'medium', 'long'].filter(s => s !== nyarl.distanceState);
+                    const newState = possibleStates[Math.floor(Math.random() * possibleStates.length)];
+                    nyarl.distanceState = newState;
 
-                switch (newState) {
-                    case 'short':
-                        nyarl.stateTimer = 120;
-                        nyarl.minRadius = 50;
-                        nyarl.maxRadius = 80;
-                        break;
-                    case 'medium':
-                        nyarl.stateTimer = 180;
-                        nyarl.minRadius = 80;
-                        nyarl.maxRadius = 120;
-                        break;
-                    case 'long':
-                        nyarl.stateTimer = 300;
-                        nyarl.minRadius = 120;
-                        nyarl.maxRadius = 160;
-                        break;
+                    switch (newState) {
+                        case 'short': nyarl.stateTimer = 120; nyarl.minRadius = 50; nyarl.maxRadius = 80; break;
+                        case 'medium': nyarl.stateTimer = 180; nyarl.minRadius = 80; nyarl.maxRadius = 120; break;
+                        case 'long': nyarl.stateTimer = 300; nyarl.minRadius = 120; nyarl.maxRadius = 160; break;
+                    }
                 }
+
+                if (nyarl.targetTimer <= 0) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = nyarl.minRadius + Math.random() * (nyarl.maxRadius - nyarl.minRadius);
+                    nyarl.targetX = player.worldX + Math.cos(angle) * radius;
+                    nyarl.targetY = player.worldY + Math.sin(angle) * radius;
+                    nyarl.targetTimer = Math.random() * 60 + 60;
+                }
+            } else {
+                 nyarl.targetX = player.worldX - 80;
+                 nyarl.targetY = player.worldY - 30;
             }
-
-            if (nyarl.targetTimer <= 0) {
-                const angle = Math.random() * Math.PI * 2;
-                const radius = nyarl.minRadius + Math.random() * (nyarl.maxRadius - nyarl.minRadius);
-                nyarl.targetX = player.worldX + Math.cos(angle) * radius;
-                nyarl.targetY = player.worldY + Math.sin(angle) * radius;
-
-                nyarl.targetTimer = Math.random() * 60 + 60;
-            }
-
-            nyarl.worldX += (nyarl.targetX - nyarl.worldX) * 0.03;
-            nyarl.worldY += (nyarl.targetY - nyarl.worldY) * 0.03;
+            nyarl.worldX += (nyarl.targetX - nyarl.worldX) * 0.05; 
+            nyarl.worldY += (nyarl.targetY - nyarl.worldY) * 0.05;
         }
 
-
-        // --- ロジック更新 ---
         function update() {
-            stateTimer++; const currentStep = tutorialSequence[currentTutorialStep];
-            if (gameState === 'TUTORIAL_MOVE') { const distToSaki = Math.hypot(player.worldX - saki.worldX, player.worldY - saki.worldY); if (distToSaki < 150) { currentTutorialStep++; const nextStep = tutorialSequence[currentTutorialStep]; gameState = nextStep.state; if (nextStep.text) showTutorialText(nextStep.text); else hideTutorialText(); stateTimer = 0; if (gameState === 'CINEMATIC_BOSS_APPEAR' && audioStarted) { peacefulBGM.stop(); battleBGM.start(); } } }
-            else if (currentStep && currentStep.duration !== Infinity && stateTimer > currentStep.duration) {
-                currentTutorialStep++;
-                const nextStep = tutorialSequence[currentTutorialStep];
-                if (nextStep) { gameState = nextStep.state; if (nextStep.text) showTutorialText(nextStep.text); else hideTutorialText(); stateTimer = 0; }
+            if (isTimeStopped) return;
+
+            // ★★★ ここからロジックを整理・修正 ★★★
+            if (gameState === 'TUTORIAL' || gameState === 'TUTORIAL_BATTLE') {
+                updateTutorial();
             }
-            if (gameState === 'CINEMATIC_BOSS_APPEAR') { saki.alpha = Math.max(0, 1 - stateTimer / 120); dog.alpha = Math.max(0, 1 - stateTimer / 120); boss.radius = Math.min(boss.maxRadius, (stateTimer / 120) * boss.maxRadius); if (stateTimer > 60 && stateTimer < 150) { const backStepTargetY = world.height * 0.5; player.worldY += (backStepTargetY - player.worldY) * 0.05; } } else if (gameState !== 'TITLE') { updatePlayer(); }
+            
+            // プレイヤーが操作不能になるイベント中以外は、プレイヤーの操作を更新する
+            const playerCanMove = !['WATCHING_PLAY', 'STAIN_APPEAR', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'].includes(tutorialState);
+            if (gameState !== 'TITLE' && playerCanMove) {
+                updatePlayer();
+            }
+            
+            // ニャルを更新
+            if (gameState !== 'TITLE') {
+                updateNyarl();
+            }
+            
+            // バトル中の処理
+            if (gameState === 'TUTORIAL_BATTLE' && boss.isActive) {
+                updateBossAndBullets();
+                checkCollisions();
+            }
+            // ★★★ ここまで ★★★
 
             if (gameState !== 'TITLE') {
                 camera.x += (player.worldX - canvas.width / 2 - camera.x) * 0.1; camera.y += (player.worldY - canvas.height / 2 - camera.y) * 0.1;
                 camera.x = Math.max(0, Math.min(world.width - canvas.width, camera.x)); camera.y = Math.max(0, Math.min(world.height - canvas.height, camera.y));
-
-                updateNyarl();
-
-                if (gameState === 'BATTLE' || gameState === 'BATTLE_START') { if (!boss.isActive) { boss.isActive = true; document.getElementById('purificationGaugeContainer').style.opacity = 1; } updateBossAndBullets(); checkCollisions(); }
-                else if (gameState === 'CLEAR') { bullets = []; boss.isActive = false; }
+                
+                if (gameState === 'CLEAR') { bullets = []; boss.isActive = false; }
                 effects.forEach((e, i) => { e.update(); if (e.life <= 0) effects.splice(i, 1); });
             }
         }
         function isPositionOnCloud(x, y) { if (!groundCloudCtx) return false; if (x < 0 || x >= world.width || y < 0 || y >= world.height) return false; const pixelData = groundCloudCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data; return pixelData[3] > 0; }
-
-        // ★★★ ここから変更点② ★★★
-        // プレイヤーの移動ロジックを修正！
-        function updatePlayer() {
-            if (player.stunTimer > 0) { player.stunTimer--; return; }
-            if (player.shieldBreakTime > 0) { player.shieldBreakTime--; return; }
-            if (player.dodgeTimer > 0) { player.dodgeTimer--; if (player.dodgeTimer === 10 && boss.purificationGauge < boss.maxPurificationGauge) { boss.purificationGauge += 15; createGaugeEffect(); } } else player.isDodging = false;
-            if (player.rollTimer > 0) { player.rollTimer--; player.rollAngle += 0.5; } else player.isRolling = false;
-            if (player.dodgeCooldown > 0) player.dodgeCooldown--;
-            player.isGuarding = keys.c && player.shieldGauge > 0;
-            if (player.isGuarding) {
-                if (!isGuardSoundPlaying) { sounds.guard.triggerAttack("C2"); isGuardSoundPlaying = true; }
-                player.shieldGauge -= 0.5;
-                if (player.shieldGauge <= 0) { player.shieldBreakTime = 120; playSound('hit'); }
-            } else {
-                if (isGuardSoundPlaying) { sounds.guard.triggerRelease(); isGuardSoundPlaying = false; }
-                if (player.shieldGauge < 100) player.shieldGauge += 0.3;
-            }
-
-            let moveX = 0;
-            let moveY = 0;
-
-            // 回避中かどうかで、移動のロジックを完全に分ける！
-            if (player.isRolling) {
-                // 回転回避中は、キー入力を見ずに「記憶した方向」にだけ進む！
-                moveX = player.rollDirection * player.rollSpeed;
-            } else if (!player.isGuarding) {
-                // 通常移動
-                if (keys.w) moveY -= player.speed;
-                if (keys.s) moveY += player.speed;
-                if (keys.a) moveX -= player.speed;
-                if (keys.d) moveX += player.speed;
-            }
-
-            let nextX = player.worldX + moveX;
-            let nextY = player.worldY + moveY;
-            if (isPositionOnCloud(nextX, player.worldY)) player.worldX = nextX;
-            if (isPositionOnCloud(player.worldX, nextY)) player.worldY = nextY;
-        }
-        // ★★★ ここまで変更点② ★★★
-
+        function updatePlayer() { if (player.stunTimer > 0) { player.stunTimer--; return; } if (player.shieldBreakTime > 0) { player.shieldBreakTime--; return; } if (player.dodgeTimer > 0) { player.dodgeTimer--; } else player.isDodging = false; if (player.rollTimer > 0) { player.rollTimer--; player.rollAngle += 0.5; } else player.isRolling = false; if (player.dodgeCooldown > 0) player.dodgeCooldown--; player.isGuarding = keys.c && player.shieldGauge > 0; if (player.isGuarding) { if (!isGuardSoundPlaying) { sounds.guard.triggerAttack("C2"); isGuardSoundPlaying = true; } player.shieldGauge -= 0.5; if (player.shieldGauge <= 0) { player.shieldBreakTime = 120; playSound('hit'); } } else { if (isGuardSoundPlaying) { sounds.guard.triggerRelease(); isGuardSoundPlaying = false; } if (player.shieldGauge < 100) player.shieldGauge += 0.3; } let moveX = 0; let moveY = 0; if (player.isRolling) { moveX = player.rollDirection * player.rollSpeed; } else if (!player.isGuarding) { if (keys.w) moveY -= player.speed; if (keys.s) moveY += player.speed; if (keys.a) moveX -= player.speed; if (keys.d) moveX += player.speed; } let nextX = player.worldX + moveX; let nextY = player.worldY + moveY; if (isPositionOnCloud(nextX, player.worldY)) player.worldX = nextX; if (isPositionOnCloud(player.worldX, nextY)) player.worldY = nextY; }
+        
         function updateBossAndBullets() {
-            if (!boss.isActive) return;
-            if (boss.isVulnerable) { boss.vulnerableTimer--; if (boss.vulnerableTimer <= 0) { boss.isVulnerable = false; boss.purificationGauge = 0; } return; }
-            const distToPlayer = Math.hypot(player.worldX - boss.worldX, player.worldY - boss.worldY); const maxDist = 400;
-            if (distToPlayer < maxDist) { boss.purificationGauge += (1 - (distToPlayer / maxDist)) * 0.2 + 0.05; } else { boss.purificationGauge += 0.05; }
-            if (boss.purificationGauge >= boss.maxPurificationGauge && !boss.isVulnerable) { boss.isVulnerable = true; boss.vulnerableTimer = 180; bullets = []; effects.push(new WallBreakEffect(boss.worldX, boss.worldY)); playSound('wallBreak'); if (boss.isCharging) { boss.isCharging = false; boss.chargeTimer = 0; playSound('chargeRelease'); } }
-            document.getElementById('purificationGauge').style.width = `${(boss.purificationGauge / boss.maxPurificationGauge) * 100}%`;
-            boss.attackTimer++; const retreatDistance = 200;
-            if (distToPlayer < retreatDistance) { const angleFromPlayer = Math.atan2(boss.worldY - player.worldY, boss.worldX - player.worldX); const retreatSpeed = 2; let nextX = boss.worldX + Math.cos(angleFromPlayer) * retreatSpeed; let nextY = boss.worldY + Math.sin(angleFromPlayer) * retreatSpeed; if (isPositionOnCloud(nextX, nextY)) { boss.worldX = nextX; boss.worldY = nextY; } }
-            if (boss.isCharging) { boss.chargeTimer++; if (boss.chargeTimer > 60) { boss.isCharging = false; boss.chargeTimer = 0; playSound('chargeRelease'); const rand = Math.random(); const angle = Math.atan2(player.worldY - boss.worldY, player.worldX - boss.worldX); if (rand < 0.3) { effects.push(new YawnEffect(boss.worldX, boss.worldY)); playSound('yawn'); } else { bullets.push(new SneezeBullet(boss.worldX, boss.worldY, angle)); playSound('sneeze'); effects.push(new ChargeEffect(boss.worldX, boss.worldY, '#FFEB3B')); } } } else { if (boss.attackTimer > 60 && boss.attackTimer % 180 === 0) { boss.isCharging = true; playSound('charge'); effects.push(new ChargeEffect(boss.worldX, boss.worldY, '#FFFFFF')); } else if (boss.attackTimer > 60 && boss.attackTimer % 50 === 0) { const angle = Math.atan2(player.worldY - boss.worldY, player.worldX - boss.worldX) + (Math.random() - 0.5) * 0.5; bullets.push(new CoughBullet(boss.worldX, boss.worldY, angle)); playSound('cough'); } }
-            bullets.forEach((b, i) => { b.update(); if (b.life <= 0) bullets.splice(i, 1); });
-        }
-        class CoughBullet { constructor(x, y, angle) { this.worldX = x; this.worldY = y; this.radius = 5; this.speed = 3; this.vx = Math.cos(angle) * this.speed; this.vy = Math.sin(angle) * this.speed; this.life = 180; } update() { this.worldX += this.vx; this.worldY += this.vy; this.radius += 0.2; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const alpha = Math.min(1, this.life / 60); ctx.beginPath(); ctx.fillStyle = `rgba(139, 195, 74, ${0.4 * alpha})`; ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.fillStyle = `rgba(205, 220, 57, ${0.3 * alpha})`; ctx.arc(x, y, this.radius * 0.6, 0, Math.PI * 2); ctx.fill(); } }
-        class SneezeBullet { constructor(x, y, angle) { this.worldX = x; this.worldY = y; this.radius = 8; this.speed = 15; this.vx = Math.cos(angle) * this.speed; this.vy = Math.sin(angle) * this.speed; this.life = 120; } update() { this.worldX += this.vx; this.worldY += this.vy; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; ctx.beginPath(); ctx.fillStyle = '#FFC107'; ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.fillStyle = '#FFFFFF'; ctx.arc(x, y, this.radius * 0.5, 0, Math.PI * 2); ctx.fill(); } }
-        class YawnEffect { constructor(x, y) { this.worldX = x; this.worldY = y; this.radiusX = 0; this.radiusY = 0; this.life = 60; } update() { this.radiusX += 2; this.radiusY += 1; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; ctx.strokeStyle = `rgba(3, 169, 244, ${this.life / 60 * 0.8})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(x, y, this.radiusX, this.radiusY, 0, 0, Math.PI * 2); ctx.stroke(); } }
-        class ChargeEffect { constructor(x, y, color) { this.worldX = x; this.worldY = y; this.life = 60; this.color = color; } update() { this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const progress = (60 - this.life) / 60; const radiusX = (boss.radius + 30) * progress; const radiusY = radiusX * 0.5; ctx.strokeStyle = `rgba(${this.color === '#FFFFFF' ? '255,255,255' : '255,235,59'}, ${1 - progress})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2); ctx.stroke(); } }
-        class WallBreakEffect { constructor(x, y) { this.worldX = x; this.worldY = y; this.life = 30; } update() { this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const progress = (30 - this.life) / 30; ctx.strokeStyle = `rgba(0, 188, 212, ${1 - progress})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, y, 50 * progress, 25 * progress, 0, 0, Math.PI * 2); ctx.stroke(); } }
-        function createGaugeEffect() { for (let i = 0; i < 5; i++) { effects.push(new GaugeParticle(player.worldX, player.worldY)); } } class GaugeParticle { constructor(x, y) { this.worldX = x; this.worldY = y; this.life = 20; this.radius = Math.random() * 3 + 1; this.vx = (Math.random() - 0.5) * 2; this.vy = -Math.random() * 2 - 1; } update() { this.worldX += this.vx; this.worldY += this.vy; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; ctx.fillStyle = `rgba(0, 188, 212, ${this.life / 20})`; ctx.beginPath(); ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); } }
-        function checkCollisions() {
-            const battleStates = ['BATTLE_START', 'BATTLE']; if (!battleStates.includes(gameState)) return;
-            bullets.forEach((b, i) => { const dist = Math.hypot(player.worldX - b.worldX, player.worldY - b.worldY); if (dist < player.width / 2 + b.radius) { if (player.isDodging || player.isRolling || player.stunTimer > 0) return; if (b instanceof SneezeBullet && player.isGuarding) { bullets.splice(i, 1); playSound('hit'); player.shieldBreakTime = 120; player.shieldGauge = 0; const knockbackPower = 60; const angle = Math.atan2(player.worldY - b.worldY, player.worldX - b.worldX); let nextX = player.worldX + Math.cos(angle) * knockbackPower; let nextY = player.worldY + Math.sin(angle) * knockbackPower; if (isPositionOnCloud(nextX, nextY)) { player.worldX = nextX; player.worldY = nextY; } return; } if (player.isGuarding) { bullets.splice(i, 1); player.shieldGauge -= 20; if (player.shieldGauge <= 0) player.shieldBreakTime = 120; } else { bullets.splice(i, 1); playSound('hit'); player.dreamCollapse += (b instanceof SneezeBullet) ? 30 : 10; if (player.dreamCollapse >= 100) { showMessage("悪夢に飲まれた…"); gameState = 'GAMEOVER'; } player.stunTimer = 30; const knockbackPower = (b instanceof SneezeBullet) ? 40 : 20; const angle = Math.atan2(player.worldY - b.worldY, player.worldX - b.worldX); let nextX = player.worldX + Math.cos(angle) * knockbackPower; let nextY = player.worldY + Math.sin(angle) * knockbackPower; if (isPositionOnCloud(nextX, nextY)) { player.worldX = nextX; player.worldY = nextY; } } } });
-            if (boss.isVulnerable) {
-                const distToBoss = Math.hypot(player.worldX - boss.worldX, player.worldY - boss.worldY);
-                if (distToBoss < player.width / 2 + boss.radius) {
-                    if (gameState !== 'CLEAR') {
-                        showMessage("浄化成功");
-                        playSound('purify');
-                        gameState = 'CLEAR';
-                        stateTimer = 0;
-                        currentTutorialStep = tutorialSequence.findIndex(s => s.state === 'CLEAR');
+            if (!boss.isActive || boss.isVulnerable) return;
+            
+            if (tutorialState === 'BATTLE_AVOID_ONLY') {
+                 if(boss.attackTimer % 150 === 0 && bullets.length === 0) {
+                    const angle = Math.atan2(player.worldY - boss.worldY, player.worldX - boss.worldX);
+                    bullets.push(new CoughBullet(boss.worldX, boss.worldY, angle));
+                    playSound('cough');
+                 }
+            } else if (['LESSON_SPOT_DODGE', 'LESSON_ROLL_DODGE', 'LESSON_GUARD', 'LESSON_GUARD_SUCCESS'].includes(tutorialState)) {
+                 if(boss.attackTimer % 120 === 0 && bullets.length === 0) {
+                     const angle = Math.atan2(player.worldY - boss.worldY, player.worldX - boss.worldX);
+                    bullets.push(new CoughBullet(boss.worldX, boss.worldY, angle));
+                    playSound('cough');
+                 }
+            }
+            boss.attackTimer++;
+            
+            bullets.forEach((b, i) => { 
+                b.update(); 
+                const screenX = b.worldX - camera.x;
+                const screenY = b.worldY - camera.y;
+                if (screenX < -b.radius || screenX > canvas.width + b.radius || screenY < -b.radius || screenY > canvas.height + b.radius) {
+                     if(tutorialState === 'BATTLE_AVOID_ONLY' && !b.isForSaki && !b.isForDog) {
+                         avoidSuccessCount++;
                     }
+                    bullets.splice(i, 1);
+                }
+            });
+        }
+        class CoughBullet { 
+            constructor(x, y, angle, target = null, isForSaki = false, isForDog = false) { 
+                this.worldX = x; this.worldY = y; this.radius = 5; this.speed = 3; this.life = 480; this.target = target; this.isForSaki = isForSaki; this.isForDog = isForDog;
+                if(target) { const targetAngle = Math.atan2(target.worldY - y, target.worldX - x); this.vx = Math.cos(targetAngle) * this.speed; this.vy = Math.sin(targetAngle) * this.speed; } 
+                else { this.vx = Math.cos(angle) * this.speed; this.vy = Math.sin(angle) * this.speed; } 
+            } 
+            update() { 
+                this.worldX += this.vx; this.worldY += this.vy; this.radius += 0.05;
+                this.life--; 
+                if(this.target && this.target.alpha > 0 && Math.hypot(this.worldX - this.target.worldX, this.worldY - this.target.worldY) < 20) {
+                    this.target.alpha = 0;
+                    this.life = 0;
+                }
+            } 
+            draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const alpha = Math.min(1, this.life / 60); ctx.beginPath(); ctx.fillStyle = `rgba(139, 195, 74, ${0.4 * alpha})`; ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.fillStyle = `rgba(205, 220, 57, ${0.3 * alpha})`; ctx.arc(x, y, this.radius * 0.6, 0, Math.PI * 2); ctx.fill(); } 
+        }
+        function createGaugeEffect() { for (let i = 0; i < 5; i++) { effects.push(new GaugeParticle(player.worldX, player.worldY)); } } class GaugeParticle { constructor(x, y) { this.worldX = x; this.worldY = y; this.life = 20; this.radius = Math.random() * 3 + 1; this.vx = (Math.random() - 0.5) * 2; this.vy = -Math.random() * 2 - 1; } update() { this.worldX += this.vx; this.worldY += this.vy; this.life--; } draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; ctx.fillStyle = `rgba(0, 188, 212, ${this.life / 20})`; ctx.beginPath(); ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); } }
+        
+        function checkCollisions() {
+             if (!boss.isActive) return;
+             bullets.forEach((b, i) => { 
+                if (b.isForSaki || b.isForDog) return;
+                const dist = Math.hypot(player.worldX - b.worldX, player.worldY - b.worldY); 
+                if (dist < player.width / 2 + b.radius) { 
+                    if (player.isDodging || player.isRolling) {
+                        // ★★★ 横回避の成功判定と次のステップへの移行 ★★★
+                        if(tutorialState === 'LESSON_ROLL_DODGE') {
+                             isTimeStopped = false; hideTutorialText();
+                             setTimeout(() => {
+                                 isTimeStopped = true;
+                                 showTutorialText("ニャル:「最後だよ！<span>Cキー</span>を長押しして、攻撃から身を守るんだ！」");
+                                 tutorialState = 'LESSON_GUARD';
+                             }, 500);
+                        }
+                        return; 
+                    }
+                    if (player.isGuarding) {} else { playSound('hit'); }
+                    bullets.splice(i, 1);
+                } 
+            });
+            
+            if(boss.isActive && !boss.isVulnerable && tutorialState === 'LESSON_GUARD_SUCCESS') {
+                boss.purificationGauge += 2;
+                document.getElementById('purificationGauge').style.width = `${(boss.purificationGauge / boss.maxPurificationGauge) * 100}%`;
+                if(boss.purificationGauge >= boss.maxPurificationGauge) {
+                    boss.isVulnerable = true;
+                    tutorialState = 'BATTLE_END';
+                    stateTimer = 0;
                 }
             }
         }
 
-
-        // --- 描画処理 ---
-        function draw() {
-            ctx.fillStyle = '#75cff0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            if (gameState !== 'TITLE') {
-                backgroundLayers.forEach(layer => { const layerX = -camera.x * layer.speed; const layerY = -camera.y * layer.speed; const imgWidth = layer.canvas.width; const imgHeight = layer.canvas.height; for (let y = layerY % imgHeight - imgHeight; y < canvas.height + imgHeight; y += imgHeight) { for (let x = layerX % imgWidth - imgWidth; x < canvas.width + imgWidth; x += imgWidth) { ctx.drawImage(layer.canvas, x, y); } } });
-                const drawObj = (obj, img = null, alpha = 1) => {
-                    const x = obj.worldX - camera.x;
-                    const y = obj.worldY - camera.y;
-
-                    ctx.globalAlpha = alpha;
-                    if (img && img.complete && img.naturalHeight !== 0) {
-                        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                        ctx.beginPath();
-                        ctx.ellipse(x, y + obj.height / 2, obj.width / 2.2, obj.width / 4, 0, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.drawImage(img, x - obj.width / 2, y - obj.height / 2, obj.width, obj.height);
-                    } else {
-                        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                        ctx.beginPath();
-                        ctx.ellipse(x, y + obj.height / 2, obj.width / 2.2, obj.width / 4, 0, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.fillStyle = obj.color || '#000000';
-                        ctx.fillRect(x - obj.width / 2, y - obj.height / 2, obj.width, obj.height);
-                    }
-                    ctx.globalAlpha = 1;
+        function draw() { 
+            ctx.fillStyle = '#75cff0'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+            if (gameState !== 'TITLE') { 
+                backgroundLayers.forEach(layer => { const layerX = -camera.x * layer.speed; const layerY = -camera.y * layer.speed; const imgWidth = layer.canvas.width; const imgHeight = layer.canvas.height; for (let y = layerY % imgHeight - imgHeight; y < canvas.height + imgHeight; y += imgHeight) { for (let x = layerX % imgWidth - imgWidth; x < canvas.width + imgWidth; x += imgWidth) { ctx.drawImage(layer.canvas, x, y); } } }); 
+                
+                const drawObj = (obj, img = null, alpha = 1) => { 
+                    if (!obj || obj.alpha <= 0) return;
+                    const x = obj.worldX - camera.x; const y = obj.worldY - camera.y; 
+                    ctx.globalAlpha = alpha; 
+                    if (img && img.complete && img.naturalHeight !== 0) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.height / 2, obj.width / 2.2, obj.width / 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.drawImage(img, x - obj.width / 2, y - obj.height / 2, obj.width, obj.height); } 
+                    else { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.height / 2, obj.width / 2.2, obj.width / 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = obj.color || '#000000'; ctx.fillRect(x - obj.width / 2, y - obj.height / 2, obj.width, obj.height); } 
+                    ctx.globalAlpha = 1; 
                 };
-                const drawCirc = (obj) => { const x = obj.worldX - camera.x, y = obj.worldY - camera.y; ctx.globalAlpha = (obj.isVulnerable && Math.floor(stateTimer / 10) % 2 === 0) ? 0.5 : 1.0; ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.radius, obj.radius, obj.radius * 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = (obj.isVulnerable) ? '#B2EBF2' : obj.color; ctx.beginPath(); ctx.arc(x, y, obj.radius, 0, Math.PI * 2); ctx.fill(); if (obj.coreRadius) { ctx.fillStyle = (obj.isVulnerable) ? '#FFFFFF' : obj.coreColor; ctx.beginPath(); ctx.arc(x, y, obj.coreRadius, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1.0; };
+                const drawCirc = (obj) => { 
+                    if (!obj || obj.alpha <= 0) return;
+                    const x = obj.worldX - camera.x, y = obj.worldY - camera.y; 
+                    ctx.globalAlpha = obj.alpha * ((obj.isVulnerable && Math.floor(stateTimer / 10) % 2 === 0) ? 0.5 : 1.0); 
+                    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.radius, obj.radius, obj.radius * 0.5, 0, 0, Math.PI * 2); ctx.fill(); 
+                    ctx.fillStyle = (obj.isVulnerable) ? '#B2EBF2' : obj.color; ctx.beginPath(); ctx.arc(x, y, obj.radius, 0, Math.PI * 2); ctx.fill(); 
+                    if (obj.coreRadius) { ctx.fillStyle = (obj.isVulnerable) ? '#FFFFFF' : obj.coreColor; ctx.beginPath(); ctx.arc(x, y, obj.coreRadius, 0, Math.PI * 2); ctx.fill(); } 
+                    ctx.globalAlpha = 1.0; 
+                };
+
+                if (demonStain && demonStain.alpha > 0) {
+                      const x = demonStain.worldX - camera.x; const y = demonStain.worldY - camera.y;
+                      ctx.globalAlpha = demonStain.alpha;
+                      ctx.fillStyle = 'black';
+                      ctx.beginPath();
+                      ctx.arc(x, y, demonStain.radius, 0, Math.PI * 2);
+                      ctx.fill();
+                      ctx.globalAlpha = 1;
+                }
 
                 const objectsToDraw = [...bullets, ...effects, saki, dog, boss, nyarl, player].filter(Boolean);
                 objectsToDraw.sort((a, b) => (a.worldY + (a.height || a.radius || 0)) - (b.worldY + (b.height || a.radius || 0)));
-
-                objectsToDraw.forEach(obj => {
-                    if (obj.draw) {
-                        obj.draw(ctx, camera);
-                    } else if (obj === player) {
-                        drawPlayer();
-                    } else if (obj === nyarl) {
-                        drawObj(obj, assets.nyarl.img, obj.alpha);
-                    } else if (obj === boss) {
-                        if (gameState.includes('BATTLE') || gameState === 'CINEMATIC_BOSS_APPEAR' || gameState === 'CLEAR') {
-                            drawCirc(obj);
-                        }
-                    } else if (obj === saki || obj === dog) {
-                        drawObj(obj, null, obj.alpha);
-                    }
+                objectsToDraw.forEach(obj => { 
+                    if (obj.draw) { obj.draw(ctx, camera); } 
+                    else if (obj === player) { drawPlayer(); } 
+                    else if (obj === nyarl) { drawObj(obj, assets.nyarl.img, obj.alpha); } 
+                    else if (obj === boss) { drawCirc(obj); } 
+                    else if (obj === saki || obj === dog) { drawObj(obj, null, obj.alpha); } 
                 });
-                drawUI();
-            }
-        }
-        function drawPlayer() {
-            const x = player.worldX - camera.x; const y = player.worldY - camera.y;
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.globalAlpha = (player.isDodging || (player.shieldBreakTime > 0 && Math.floor(stateTimer / 10) % 2 === 0)) ? 0.5 : 1.0;
-            if (player.isRolling) { player.rollAngle += 0.5; ctx.rotate(player.rollAngle); }
-            ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, player.height / 2, player.width / 2.2, player.width / 4, 0, 0, Math.PI * 2); ctx.fill();
+                drawUI(); 
+            } 
+        } 
+        function drawPlayer() { const x = player.worldX - camera.x; const y = player.worldY - camera.y; ctx.save(); ctx.translate(x, y); ctx.globalAlpha = (player.isDodging || (player.shieldBreakTime > 0 && Math.floor(stateTimer / 10) % 2 === 0)) ? 0.5 : 1.0; if (player.isRolling) { player.rollAngle += 0.5; ctx.rotate(player.rollAngle); } ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, player.height / 2, player.width / 2.2, player.width / 4, 0, 0, Math.PI * 2); ctx.fill(); if (assets.player.img.complete && assets.player.img.naturalHeight !== 0) { ctx.drawImage(assets.player.img, -player.width / 2, -player.height / 2, player.width, player.height); } else { ctx.fillStyle = player.color || '#4CAF50'; ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height); } ctx.restore(); if (player.isGuarding) { ctx.strokeStyle = `rgba(33, 150, 243, ${player.shieldGauge / 100})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, 25, 15, 0, 0, Math.PI * 2); ctx.stroke(); } if (player.shieldBreakTime > 0) { const dizzyY = y - player.height / 2 - 15; const angle = stateTimer * 0.1; ctx.fillStyle = '#FFEB3B'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; for (let i = 0; i < 3; i++) { const starX = x + Math.cos(angle + i * (Math.PI * 2 / 3)) * 15; const starY = dizzyY + Math.sin(angle + i * (Math.PI * 2 / 3)) * 5; ctx.fillText('★', starX, starY); } } } 
+        function drawUI() { const uiElements = [document.getElementById('dreamCollapseDisplay'), document.getElementById('shieldDisplay')]; if (gameState === 'TUTORIAL_BATTLE' || gameState === 'CLEAR') { uiElements.forEach(el => el.style.opacity = '1'); } else { uiElements.forEach(el => el.style.opacity = '0'); } document.getElementById('dreamCollapseDisplay').textContent = `心の崩壊度: ${Math.floor(player.dreamCollapse)}%`; document.getElementById('shieldDisplay').textContent = `集中力: ${Math.floor(player.shieldGauge)}%`; if (player.shieldBreakTime > 0) { document.getElementById('shieldDisplay').textContent = "シールドブレイク！"; document.getElementById('shieldDisplay').style.color = "#f44336"; } else { document.getElementById('shieldDisplay').style.color = "#fff"; } }
 
-            if (assets.player.img.complete && assets.player.img.naturalHeight !== 0) {
-                ctx.drawImage(assets.player.img, -player.width / 2, -player.height / 2, player.width, player.height);
-            } else {
-                ctx.fillStyle = player.color || '#4CAF50';
-                ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
-            }
-
-            ctx.restore();
-            if (player.isGuarding) { ctx.strokeStyle = `rgba(33, 150, 243, ${player.shieldGauge / 100})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, 25, 15, 0, 0, Math.PI * 2); ctx.stroke(); }
-            if (player.shieldBreakTime > 0) { const dizzyY = y - player.height / 2 - 15; const angle = stateTimer * 0.1; ctx.fillStyle = '#FFEB3B'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; for (let i = 0; i < 3; i++) { const starX = x + Math.cos(angle + i * (Math.PI * 2 / 3)) * 15; const starY = dizzyY + Math.sin(angle + i * (Math.PI * 2 / 3)) * 5; ctx.fillText('★', starX, starY); } }
-        }
-        function drawUI() {
-            const uiElements = [document.getElementById('dreamCollapseDisplay'), document.getElementById('shieldDisplay')];
-            if (gameState !== 'TITLE') { uiElements.forEach(el => el.style.opacity = '1'); } else { uiElements.forEach(el => el.style.opacity = '0'); }
-            document.getElementById('dreamCollapseDisplay').textContent = `心の崩壊度: ${Math.floor(player.dreamCollapse)}%`; document.getElementById('shieldDisplay').textContent = `集中力: ${Math.floor(player.shieldGauge)}%`; if (player.shieldBreakTime > 0) { document.getElementById('shieldDisplay').textContent = "シールドブレイク！"; document.getElementById('shieldDisplay').style.color = "#f44336"; } else { document.getElementById('shieldDisplay').style.color = "#fff"; }
-        }
-
-        // (イベントリスナーとその他ユーティリティ関数)
         const tutorialText = document.getElementById('tutorialText'); const messageOverlay = document.getElementById('messageOverlay');
         window.addEventListener('keydown', (e) => {
             const key = e.key; const lowerKey = key.toLowerCase();
             if (gameState === 'TITLE' && lowerKey === ' ') {
-                if (!audioStarted) { try { if (Tone.context.state !== 'running') { Tone.start().then(() => { setupSounds(); Tone.Transport.start(); peacefulBGM.start(0); }); } audioStarted = true; } catch (e) { } }
+                const startTutorialMusic = () => {
+                    Tone.Transport.stop();
+                    Tone.Transport.cancel(0);
+                    if (battleBGM) battleBGM.stop();
+                    if (peacefulBGM) peacefulBGM.start(0);
+                    Tone.Transport.start();
+                };
+                if (!audioStarted) { 
+                    try { Tone.start().then(() => { setupSounds(); startTutorialMusic(); audioStarted = true; }); } catch (err) { console.error(err); } 
+                } else { startTutorialMusic(); }
                 document.getElementById('titleScreen').style.display = 'none';
-                gameState = 'TUTORIAL_START'; stateTimer = 0; currentTutorialStep = 0;
-                const firstStep = tutorialSequence[currentTutorialStep];
-                if (firstStep.text) showTutorialText(firstStep.text);
+                gameState = 'TUTORIAL'; 
                 return;
             }
-            if (keys[lowerKey] !== undefined) keys[lowerKey] = true;
-            if (key === 'Shift' && !player.isDodging && !player.isRolling && player.stunTimer <= 0 && player.dodgeCooldown <= 0) {
-                playSound('dodge');
-                player.dodgeCooldown = 60;
-                if (keys.a || keys.d) {
-                    player.isRolling = true;
-                    player.rollTimer = 25;
-                    player.rollAngle = 0;
-                    // ★★★ ここから変更点③ ★★★
-                    // 回転回避が始まった瞬間の方向を記憶する！(-1が左, 1が右)
-                    player.rollDirection = keys.a ? -1 : 1;
-                    // ★★★ ここまで変更点③ ★★★
-                }
-                else {
-                    player.isDodging = true;
-                    player.dodgeTimer = 15;
+            
+            // ★★★ 動きがおかしくなる原因だった行を削除 ★★★
+            // if (keys[lowerKey] !== undefined && tutorialState !== 'WASD_GUIDE') keys[lowerKey] = false;
+            
+            if (tutorialState === 'WASD_GUIDE') {
+                if (['w', 'a', 's', 'd'].includes(lowerKey)) {
+                    wasdCheck[lowerKey] = true;
+                    document.getElementById(`key-${lowerKey}`).classList.add('pressed');
+                    if (wasdCheck.w && wasdCheck.a && wasdCheck.s && wasdCheck.d) {
+                        wasdCheck.all = true;
+                    }
                 }
             }
-            if (key === ' ' && (gameState === 'GAME_WIN' || gameState === 'GAMEOVER')) { resetGame(); }
+            
+            keys[lowerKey] = true;
+
+            if (key === 'Shift' && !player.isDodging && !player.isRolling && player.stunTimer <= 0 && player.dodgeCooldown <= 0) {
+                 if (tutorialState === 'LESSON_SPOT_DODGE' && !(keys.a || keys.d)) {
+                    isTimeStopped = false; hideTutorialText();
+                     // ★★★ 成功判定を checkCollisions に移動したため、ここでの state 変更は不要に ★★★
+                 }
+                 if (tutorialState === 'LESSON_ROLL_DODGE' && (keys.a || keys.d)) {
+                    isTimeStopped = false; hideTutorialText();
+                    // ★★★ 成功判定を checkCollisions に移動 ★★★
+                 }
+
+                playSound('dodge');
+                player.dodgeCooldown = 60; 
+                if (keys.a || keys.d) { 
+                    player.isRolling = true; 
+                    player.rollTimer = 25; 
+                    player.rollAngle = 0; 
+                    player.rollDirection = keys.a ? -1 : 1; 
+                }
+                else { 
+                    player.isDodging = true; 
+                    player.dodgeTimer = 30;
+                }
+            }
+
+            if(lowerKey === 'c' && tutorialState === 'LESSON_GUARD') {
+                 isTimeStopped = false;
+                 hideTutorialText();
+                 tutorialState = 'LESSON_GUARD_SUCCESS';
+                 showTutorialText("ニャル:「完璧だ！心の力で、あの子を浄化しよう！」");
+            }
+            if (key === ' ' && (gameState === 'CLEAR')) { resetGame(); }
         });
         window.addEventListener('keyup', (e) => { const key = e.key; const lowerKey = key.toLowerCase(); if (keys[lowerKey] !== undefined) keys[lowerKey] = false; if (lowerKey === 'c') tryParry(); });
-        function showTutorialText(text) { tutorialText.textContent = text; tutorialText.style.opacity = 1; }
+        function showTutorialText(text) { tutorialText.innerHTML = text; tutorialText.style.opacity = 1; }
         function hideTutorialText() { tutorialText.style.opacity = 0; }
         function showMessage(text) { messageOverlay.textContent = text; messageOverlay.style.opacity = 1; }
         function tryParry() { if (!gameState.includes('BATTLE') || boss.isVulnerable) return; let parried = false; bullets.forEach(b => { if (Math.hypot(player.worldX - b.worldX, player.worldY - b.worldY) < 50) parried = true; }); if (parried) { playSound('parry'); boss.purificationGauge += 35; createGaugeEffect(); let erased = 0; for (let i = bullets.length - 1; i >= 0; i--) { if (erased < 3 && Math.hypot(player.worldX - bullets[i].worldX, player.worldY - bullets[i].worldY) < 80) { bullets.splice(i, 1); erased++; } } } }
 
-        // --- メインループ ---
         function gameLoop() {
             if (gameState !== 'TITLE') {
                 update();
