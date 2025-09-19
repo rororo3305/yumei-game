@@ -656,6 +656,8 @@
                     ctx.globalAlpha = 1.0;
                 };
 
+                // ★★★ このブロック全体をコメントアウト、もしくは削除する ★★★
+                /*
                 if (demonStain && demonStain.alpha > 0) {
                     const x = demonStain.worldX - camera.x; const y = demonStain.worldY - camera.y;
                     ctx.globalAlpha = demonStain.alpha;
@@ -665,6 +667,7 @@
                     ctx.fill();
                     ctx.globalAlpha = 1;
                 }
+                */
 
                 const objectsToDraw = [...bullets, ...effects, saki, dog, boss, nyarl, player].filter(Boolean);
                 objectsToDraw.sort((a, b) => (a.worldY + (a.height || a.radius || 0)) - (b.worldY + (b.height || a.radius || 0)));
