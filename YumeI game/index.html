@@ -194,13 +194,14 @@
         const ctx = canvas.getContext('2d');
         canvas.width = 800; canvas.height = 600;
 
-        // --- キャラクター画像とアセット読み込み ---
+        // #region キャラクター画像とアセット読み込み 
         const assets = {
             player: { img: new Image() },
             nyarl: { img: new Image() }
         };
         const PLAYER_IMAGE_URL = './images/player.png';
         const NYARL_IMAGE_URL = './images/nyarl.png';
+        // #endregion
 
         let assetsLoaded = 0;
         const totalAssetsToLoad = 2; // player, nyarl
@@ -218,11 +219,10 @@
 
         assets.player.img.onload = onAssetLoad;
         assets.nyarl.img.onload = onAssetLoad;
-        assets.player.img.onerror = () => { console.error("Player image failed to load."); onAssetLoad(); }; // エラーでも進行
-        assets.nyarl.img.onerror = () => { console.error("Nyarl image failed to load."); onAssetLoad(); }; // エラーでも進行
+        assets.player.img.onerror = () => { console.error("Player image failed to load."); onAssetLoad(); };
+        assets.nyarl.img.onerror = () => { console.error("Nyarl image failed to load."); onAssetLoad(); };
         assets.player.img.src = PLAYER_IMAGE_URL;
         assets.nyarl.img.src = NYARL_IMAGE_URL;
-
 
         // --- サウンドエンジン ---
         let sounds = {}; let audioStarted = false; let isGuardSoundPlaying = false;
@@ -283,8 +283,27 @@
         function resetGame() {
             gameState = 'TITLE';
             stateTimer = 0; camera = { x: 0, y: 0 };
-            player = { worldX: world.width / 2, worldY: world.height * 0.75, width: 48, height: 48, speed: 4, dreamCollapse: 0, shieldGauge: 100, isGuarding: false, shieldBreakTime: 0, isDodging: false, dodgeTimer: 0, dodgeCooldown: 0, isRolling: false, rollTimer: 0, rollSpeed: 9, stunTimer: 0, alpha: 1, rollAngle: 0 };
-            nyarl = { followX: 0, followY: 0, width: 40, height: 40, color: '#212121', alpha: 1 };
+
+            // ★★★ ここから変更点① ★★★
+            // playerオブジェクトに、回避方向を記憶する`rollDirection`を追加
+            player = { worldX: world.width / 2, worldY: world.height * 0.75, width: 48, height: 48, speed: 4, dreamCollapse: 0, shieldGauge: 100, isGuarding: false, shieldBreakTime: 0, isDodging: false, dodgeTimer: 0, dodgeCooldown: 0, isRolling: false, rollTimer: 0, rollSpeed: 9, stunTimer: 0, alpha: 1, rollAngle: 0, rollDirection: 0 };
+            // ★★★ ここまで変更点① ★★★
+
+            nyarl = {
+                worldX: player.worldX - 80,
+                worldY: player.worldY - 30,
+                width: 40,
+                height: 40,
+                targetX: player.worldX,
+                targetY: player.worldY,
+                targetTimer: 0,
+                alpha: 1,
+                distanceState: 'medium',
+                stateTimer: 180,
+                minRadius: 80,
+                maxRadius: 120,
+            };
+
             boss = { worldX: world.width / 2, worldY: world.height * 0.25, radius: 0, maxRadius: 25, color: '#E91E63', coreRadius: 10, coreColor: '#F44336', isActive: false, attackTimer: 0, isCharging: false, chargeTimer: 0, purificationGauge: 0, maxPurificationGauge: 100, isVulnerable: false, vulnerableTimer: 0 };
             saki = { worldX: world.width / 2 - 40, worldY: world.height * 0.25, width: 20, height: 30, color: '#FFC0CB', alpha: 1 };
             dog = { worldX: world.width / 2 + 40, worldY: world.height * 0.25 + 10, width: 25, height: 20, color: '#A0522D', alpha: 1 };
@@ -301,6 +320,49 @@
         // --- チュートリアルシーケンス ---
         const tutorialSequence = [{ state: 'TUTORIAL_START', duration: 1, text: null }, { state: 'TUTORIAL_MOVE', text: "ニャル:「あそこにいる子たちのところへ行ってみよう！」" }, { state: 'CINEMATIC_BOSS_APPEAR', duration: 180, text: "ニャル:「うわっ！？なんだ、あの子は…！」" }, { state: 'BATTLE_START', duration: 180, text: "ニャル:「ゲージを溜めて、心の壁を壊すんだ！」" }, { state: 'BATTLE', duration: Infinity }, { state: 'CLEAR', duration: 180, text: "" }, { state: 'GAME_WIN', text: "スペースキーでもう一度" }];
 
+
+        function updateNyarl() {
+            nyarl.stateTimer--;
+            nyarl.targetTimer--;
+
+            if (nyarl.stateTimer <= 0) {
+                const possibleStates = ['short', 'medium', 'long'].filter(s => s !== nyarl.distanceState);
+                const newState = possibleStates[Math.floor(Math.random() * possibleStates.length)];
+                nyarl.distanceState = newState;
+
+                switch (newState) {
+                    case 'short':
+                        nyarl.stateTimer = 120;
+                        nyarl.minRadius = 50;
+                        nyarl.maxRadius = 80;
+                        break;
+                    case 'medium':
+                        nyarl.stateTimer = 180;
+                        nyarl.minRadius = 80;
+                        nyarl.maxRadius = 120;
+                        break;
+                    case 'long':
+                        nyarl.stateTimer = 300;
+                        nyarl.minRadius = 120;
+                        nyarl.maxRadius = 160;
+                        break;
+                }
+            }
+
+            if (nyarl.targetTimer <= 0) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = nyarl.minRadius + Math.random() * (nyarl.maxRadius - nyarl.minRadius);
+                nyarl.targetX = player.worldX + Math.cos(angle) * radius;
+                nyarl.targetY = player.worldY + Math.sin(angle) * radius;
+
+                nyarl.targetTimer = Math.random() * 60 + 60;
+            }
+
+            nyarl.worldX += (nyarl.targetX - nyarl.worldX) * 0.03;
+            nyarl.worldY += (nyarl.targetY - nyarl.worldY) * 0.03;
+        }
+
+
         // --- ロジック更新 ---
         function update() {
             stateTimer++; const currentStep = tutorialSequence[currentTutorialStep];
@@ -311,17 +373,60 @@
                 if (nextStep) { gameState = nextStep.state; if (nextStep.text) showTutorialText(nextStep.text); else hideTutorialText(); stateTimer = 0; }
             }
             if (gameState === 'CINEMATIC_BOSS_APPEAR') { saki.alpha = Math.max(0, 1 - stateTimer / 120); dog.alpha = Math.max(0, 1 - stateTimer / 120); boss.radius = Math.min(boss.maxRadius, (stateTimer / 120) * boss.maxRadius); if (stateTimer > 60 && stateTimer < 150) { const backStepTargetY = world.height * 0.5; player.worldY += (backStepTargetY - player.worldY) * 0.05; } } else if (gameState !== 'TITLE') { updatePlayer(); }
+
             if (gameState !== 'TITLE') {
                 camera.x += (player.worldX - canvas.width / 2 - camera.x) * 0.1; camera.y += (player.worldY - canvas.height / 2 - camera.y) * 0.1;
                 camera.x = Math.max(0, Math.min(world.width - canvas.width, camera.x)); camera.y = Math.max(0, Math.min(world.height - canvas.height, camera.y));
-                nyarl.followX += (player.worldX - 80 - nyarl.followX) * 0.05; nyarl.followY += (player.worldY - 30 - nyarl.followY) * 0.05;
+
+                updateNyarl();
+
                 if (gameState === 'BATTLE' || gameState === 'BATTLE_START') { if (!boss.isActive) { boss.isActive = true; document.getElementById('purificationGaugeContainer').style.opacity = 1; } updateBossAndBullets(); checkCollisions(); }
                 else if (gameState === 'CLEAR') { bullets = []; boss.isActive = false; }
                 effects.forEach((e, i) => { e.update(); if (e.life <= 0) effects.splice(i, 1); });
             }
         }
         function isPositionOnCloud(x, y) { if (!groundCloudCtx) return false; if (x < 0 || x >= world.width || y < 0 || y >= world.height) return false; const pixelData = groundCloudCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data; return pixelData[3] > 0; }
-        function updatePlayer() { if (player.stunTimer > 0) { player.stunTimer--; return; } if (player.shieldBreakTime > 0) { player.shieldBreakTime--; return; } if (player.dodgeTimer > 0) { player.dodgeTimer--; if (player.dodgeTimer === 10 && boss.purificationGauge < boss.maxPurificationGauge) { boss.purificationGauge += 15; createGaugeEffect(); } } else player.isDodging = false; if (player.rollTimer > 0) { player.rollTimer--; player.rollAngle += 0.5; } else player.isRolling = false; if (player.dodgeCooldown > 0) player.dodgeCooldown--; player.isGuarding = keys.c && player.shieldGauge > 0; if (player.isGuarding) { if (!isGuardSoundPlaying) { sounds.guard.triggerAttack("C2"); isGuardSoundPlaying = true; } player.shieldGauge -= 0.5; if (player.shieldGauge <= 0) { player.shieldBreakTime = 120; playSound('hit'); } } else { if (isGuardSoundPlaying) { sounds.guard.triggerRelease(); isGuardSoundPlaying = false; } if (player.shieldGauge < 100) player.shieldGauge += 0.3; } let moveX = 0; let moveY = 0; if (!player.isGuarding && !player.isRolling) { if (keys.w) moveY -= player.speed; if (keys.s) moveY += player.speed; if (keys.a) moveX -= player.speed; if (keys.d) moveX += player.speed; } if (player.isRolling) { if (keys.a) moveX -= player.rollSpeed; if (keys.d) moveX += player.rollSpeed; } let nextX = player.worldX + moveX; let nextY = player.worldY + moveY; if (isPositionOnCloud(nextX, player.worldY)) player.worldX = nextX; if (isPositionOnCloud(player.worldX, nextY)) player.worldY = nextY; }
+
+        // ★★★ ここから変更点② ★★★
+        // プレイヤーの移動ロジックを修正！
+        function updatePlayer() {
+            if (player.stunTimer > 0) { player.stunTimer--; return; }
+            if (player.shieldBreakTime > 0) { player.shieldBreakTime--; return; }
+            if (player.dodgeTimer > 0) { player.dodgeTimer--; if (player.dodgeTimer === 10 && boss.purificationGauge < boss.maxPurificationGauge) { boss.purificationGauge += 15; createGaugeEffect(); } } else player.isDodging = false;
+            if (player.rollTimer > 0) { player.rollTimer--; player.rollAngle += 0.5; } else player.isRolling = false;
+            if (player.dodgeCooldown > 0) player.dodgeCooldown--;
+            player.isGuarding = keys.c && player.shieldGauge > 0;
+            if (player.isGuarding) {
+                if (!isGuardSoundPlaying) { sounds.guard.triggerAttack("C2"); isGuardSoundPlaying = true; }
+                player.shieldGauge -= 0.5;
+                if (player.shieldGauge <= 0) { player.shieldBreakTime = 120; playSound('hit'); }
+            } else {
+                if (isGuardSoundPlaying) { sounds.guard.triggerRelease(); isGuardSoundPlaying = false; }
+                if (player.shieldGauge < 100) player.shieldGauge += 0.3;
+            }
+
+            let moveX = 0;
+            let moveY = 0;
+
+            // 回避中かどうかで、移動のロジックを完全に分ける！
+            if (player.isRolling) {
+                // 回転回避中は、キー入力を見ずに「記憶した方向」にだけ進む！
+                moveX = player.rollDirection * player.rollSpeed;
+            } else if (!player.isGuarding) {
+                // 通常移動
+                if (keys.w) moveY -= player.speed;
+                if (keys.s) moveY += player.speed;
+                if (keys.a) moveX -= player.speed;
+                if (keys.d) moveX += player.speed;
+            }
+
+            let nextX = player.worldX + moveX;
+            let nextY = player.worldY + moveY;
+            if (isPositionOnCloud(nextX, player.worldY)) player.worldX = nextX;
+            if (isPositionOnCloud(player.worldX, nextY)) player.worldY = nextY;
+        }
+        // ★★★ ここまで変更点② ★★★
+
         function updateBossAndBullets() {
             if (!boss.isActive) return;
             if (boss.isVulnerable) { boss.vulnerableTimer--; if (boss.vulnerableTimer <= 0) { boss.isVulnerable = false; boss.purificationGauge = 0; } return; }
@@ -347,10 +452,8 @@
                 const distToBoss = Math.hypot(player.worldX - boss.worldX, player.worldY - boss.worldY);
                 if (distToBoss < player.width / 2 + boss.radius) {
                     if (gameState !== 'CLEAR') {
-                        // ★★★ ここから変更 ★★★
-                        showMessage("浄化成功"); // メッセージ表示を追加
-                        playSound('purify');     // サウンド再生を追加
-                        // ★★★ ここまで変更 ★★★
+                        showMessage("浄化成功");
+                        playSound('purify');
                         gameState = 'CLEAR';
                         stateTimer = 0;
                         currentTutorialStep = tutorialSequence.findIndex(s => s.state === 'CLEAR');
@@ -365,11 +468,47 @@
             ctx.fillStyle = '#75cff0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             if (gameState !== 'TITLE') {
                 backgroundLayers.forEach(layer => { const layerX = -camera.x * layer.speed; const layerY = -camera.y * layer.speed; const imgWidth = layer.canvas.width; const imgHeight = layer.canvas.height; for (let y = layerY % imgHeight - imgHeight; y < canvas.height + imgHeight; y += imgHeight) { for (let x = layerX % imgWidth - imgWidth; x < canvas.width + imgWidth; x += imgWidth) { ctx.drawImage(layer.canvas, x, y); } } });
-                const drawObj = (obj, img = null, alpha = 1) => { const x = obj.worldX - camera.x; const y = obj.worldY - camera.y; ctx.globalAlpha = alpha; if (img && img.complete && img.naturalHeight !== 0) { ctx.drawImage(img, x - obj.width / 2, y - obj.height / 2, obj.width, obj.height); } else { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.height / 2, obj.width / 2.2, obj.width / 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = obj.color; ctx.fillRect(x - obj.width / 2, y - obj.height / 2, obj.width, obj.height); } ctx.globalAlpha = 1; };
+                const drawObj = (obj, img = null, alpha = 1) => {
+                    const x = obj.worldX - camera.x;
+                    const y = obj.worldY - camera.y;
+
+                    ctx.globalAlpha = alpha;
+                    if (img && img.complete && img.naturalHeight !== 0) {
+                        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                        ctx.beginPath();
+                        ctx.ellipse(x, y + obj.height / 2, obj.width / 2.2, obj.width / 4, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.drawImage(img, x - obj.width / 2, y - obj.height / 2, obj.width, obj.height);
+                    } else {
+                        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                        ctx.beginPath();
+                        ctx.ellipse(x, y + obj.height / 2, obj.width / 2.2, obj.width / 4, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = obj.color || '#000000';
+                        ctx.fillRect(x - obj.width / 2, y - obj.height / 2, obj.width, obj.height);
+                    }
+                    ctx.globalAlpha = 1;
+                };
                 const drawCirc = (obj) => { const x = obj.worldX - camera.x, y = obj.worldY - camera.y; ctx.globalAlpha = (obj.isVulnerable && Math.floor(stateTimer / 10) % 2 === 0) ? 0.5 : 1.0; ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(x, y + obj.radius, obj.radius, obj.radius * 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = (obj.isVulnerable) ? '#B2EBF2' : obj.color; ctx.beginPath(); ctx.arc(x, y, obj.radius, 0, Math.PI * 2); ctx.fill(); if (obj.coreRadius) { ctx.fillStyle = (obj.isVulnerable) ? '#FFFFFF' : obj.coreColor; ctx.beginPath(); ctx.arc(x, y, obj.coreRadius, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1.0; };
-                const objectsToDraw = [...bullets, ...effects, saki, dog, boss, nyarl, player];
-                objectsToDraw.sort((a, b) => a.worldY - b.worldY);
-                objectsToDraw.forEach(obj => { if (obj.draw) { obj.draw(ctx, camera); } else if (obj === player) drawPlayer(); else if (obj === saki) { drawObj(obj, null, saki.alpha); } else if (obj === dog) { drawObj(obj, null, dog.alpha); } else if (obj === nyarl) { drawObj(obj, assets.nyarl.img); } else if (obj === boss) { if (gameState.includes('BATTLE') || gameState === 'CINEMATIC_BOSS_APPEAR' || gameState === 'CLEAR') { drawCirc(obj); } } });
+
+                const objectsToDraw = [...bullets, ...effects, saki, dog, boss, nyarl, player].filter(Boolean);
+                objectsToDraw.sort((a, b) => (a.worldY + (a.height || a.radius || 0)) - (b.worldY + (b.height || a.radius || 0)));
+
+                objectsToDraw.forEach(obj => {
+                    if (obj.draw) {
+                        obj.draw(ctx, camera);
+                    } else if (obj === player) {
+                        drawPlayer();
+                    } else if (obj === nyarl) {
+                        drawObj(obj, assets.nyarl.img, obj.alpha);
+                    } else if (obj === boss) {
+                        if (gameState.includes('BATTLE') || gameState === 'CINEMATIC_BOSS_APPEAR' || gameState === 'CLEAR') {
+                            drawCirc(obj);
+                        }
+                    } else if (obj === saki || obj === dog) {
+                        drawObj(obj, null, obj.alpha);
+                    }
+                });
                 drawUI();
             }
         }
@@ -381,11 +520,10 @@
             if (player.isRolling) { player.rollAngle += 0.5; ctx.rotate(player.rollAngle); }
             ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, player.height / 2, player.width / 2.2, player.width / 4, 0, 0, Math.PI * 2); ctx.fill();
 
-            // 画像があれば描画、なければ四角形を描画
             if (assets.player.img.complete && assets.player.img.naturalHeight !== 0) {
                 ctx.drawImage(assets.player.img, -player.width / 2, -player.height / 2, player.width, player.height);
             } else {
-                ctx.fillStyle = player.color || '#4CAF50'; // フォールバックの色
+                ctx.fillStyle = player.color || '#4CAF50';
                 ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
             }
 
@@ -414,9 +552,20 @@
             if (keys[lowerKey] !== undefined) keys[lowerKey] = true;
             if (key === 'Shift' && !player.isDodging && !player.isRolling && player.stunTimer <= 0 && player.dodgeCooldown <= 0) {
                 playSound('dodge');
-                player.dodgeCooldown = 60; // 1秒のクールタイム
-                if (keys.a || keys.d) { player.isRolling = true; player.rollTimer = 25; player.rollAngle = 0; }
-                else { player.isDodging = true; player.dodgeTimer = 15; }
+                player.dodgeCooldown = 60;
+                if (keys.a || keys.d) {
+                    player.isRolling = true;
+                    player.rollTimer = 25;
+                    player.rollAngle = 0;
+                    // ★★★ ここから変更点③ ★★★
+                    // 回転回避が始まった瞬間の方向を記憶する！(-1が左, 1が右)
+                    player.rollDirection = keys.a ? -1 : 1;
+                    // ★★★ ここまで変更点③ ★★★
+                }
+                else {
+                    player.isDodging = true;
+                    player.dodgeTimer = 15;
+                }
             }
             if (key === ' ' && (gameState === 'GAME_WIN' || gameState === 'GAMEOVER')) { resetGame(); }
         });
@@ -434,12 +583,6 @@
             draw();
             requestAnimationFrame(gameLoop);
         }
-
-        // --- ゲーム開始 ---
-        // 画像読み込みが完了してからゲームを開始するように変更
-        // resetGame();
-        // gameLoop();
-
     </script>
 </body>
 
