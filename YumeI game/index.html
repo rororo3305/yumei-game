@@ -316,10 +316,17 @@
         const groundIslands = [{ id: 'start', x: world.width / 2, y: world.height * 0.75, sizeX: 500, sizeY: 350, density: 120 }, { id: 'saki', x: world.width / 2, y: world.height * 0.25, sizeX: 400, sizeY: 300, density: 90 }, { id: 'bridge1', x: world.width / 2, y: world.height * 0.5, sizeX: 150, sizeY: 400, density: 80 }];
         const backgroundLayers = [{ canvas: createCloudIslandLayer(world.width, world.height, groundIslands), speed: 0.9 }, { canvas: createDistantCloudLayer(world.width, world.height, 30, 80, 150, 0.8), speed: 0.7 }, { canvas: createDistantCloudLayer(world.width, world.height, 10, 150, 250, 0.3), speed: 0.5 }];
 
-        let gameState; let stateTimer; let camera; let player, nyarl, boss, saki, dog, demonStain; let bullets; let effects;
+        let gameState;
+        let stateTimer;
+        let camera;
+        let player, nyarl, boss, saki, dog, demonStain;
+        let bullets;
+        let effects;
+
         const keys = { w: false, a: false, s: false, d: false, c: false, shift: false };
 
         let tutorialState;
+        let chaseCenter;
         let wasdCheck = { w: false, a: false, s: false, d: false, all: false };
         let avoidSuccessCount = 0;
         let isTimeStopped = false;
@@ -332,7 +339,7 @@
             nyarl = { worldX: player.worldX - 80, worldY: player.worldY - 30, width: 40, height: 40, targetX: player.worldX, targetY: player.worldY, targetTimer: 0, alpha: 1, distanceState: 'medium', stateTimer: 180, minRadius: 80, maxRadius: 120, };
             boss = { worldX: world.width / 2, worldY: world.height * 0.15, radius: 0, maxRadius: 25, alpha: 0, color: '#E91E63', coreRadius: 10, coreColor: '#F44336', isActive: false, attackTimer: 0, isCharging: false, chargeTimer: 0, purificationGauge: 0, maxPurificationGauge: 100, isVulnerable: false, vulnerableTimer: 0 };
 
-            const chaseCenter = { x: world.width / 2, y: world.height * 0.25 };
+            chaseCenter = { x: world.width / 2, y: world.height * 0.25 };
             saki = { worldX: chaseCenter.x + 90, worldY: chaseCenter.y, width: 20, height: 30, alpha: 1, orbitAngle: 0, orbitRadius: 70, orbitSpeed: 0.02, centerX: chaseCenter.x, centerY: chaseCenter.y };
             dog = { worldX: chaseCenter.x - 90, worldY: chaseCenter.y, width: 25, height: 20, alpha: 1 };
             demonStain = { worldX: world.width / 2, worldY: 0, radius: 0, alpha: 0, targetY: world.height * 0.20 };
@@ -360,16 +367,26 @@
             }
         }
 
-        // 追いかけっこシーンを更新する専用の関数
-        function updateChaseScene() {
-            saki.orbitAngle += saki.orbitSpeed;
-            saki.worldX = saki.centerX + Math.cos(saki.orbitAngle) * saki.orbitRadius;
-            saki.worldY = saki.centerY + Math.sin(saki.orbitAngle) * saki.orbitRadius;
-            const targetDogX = saki.centerX + Math.cos(saki.orbitAngle - 0.8) * saki.orbitRadius;
-            const targetDogY = saki.centerY + Math.sin(saki.orbitAngle - 0.8) * saki.orbitRadius;
-            dog.worldX += (targetDogX - dog.worldX) * 0.07;
-            dog.worldY += (targetDogY - dog.worldY) * 0.07;
-        }
+        // ★★★ サキちゃんだけを動かす関数 ★★★
+        function updateSakiMovement() {
+            saki.orbitAngle += saki.orbitSpeed;
+            saki.worldX = saki.centerX + Math.cos(saki.orbitAngle) * saki.orbitRadius;
+            saki.worldY = saki.centerY + Math.sin(saki.orbitAngle) * saki.orbitRadius;
+        }
+
+        // ★★★ 犬だけを動かす関数 ★★★
+        function updateDogMovement() {
+            const targetDogX = saki.centerX + Math.cos(saki.orbitAngle - 0.8) * saki.orbitRadius;
+            const targetDogY = saki.centerY + Math.sin(saki.orbitAngle - 0.8) * saki.orbitRadius;
+            dog.worldX += (targetDogX - dog.worldX) * 0.07;
+            dog.worldY += (targetDogY - dog.worldY) * 0.07;
+        }
+
+        // 追いかけっこシーンを更新する専用の関数
+        function updateChaseScene() {
+            updateSakiMovement();
+            updateDogMovement();
+        }
 
         function updateTutorial() {
             stateTimer++;
@@ -389,11 +406,12 @@
                     break;
                 case 'GO_TO_SAKI':
                     updateChaseScene(); // ★★★ ここでも呼び出す ★★★
-                    if (Math.hypot(player.worldX - saki.worldX, player.worldY - saki.worldY) < 200) {
-                        // ★★★ すぐに次の状態に移らず、新しい中継ぎ役に処理を渡す ★★★
-                        tutorialState = 'START_CONVERSATION';
-                    }
+                    const sakiScreenY = saki.worldY - camera.y;
+                    if (sakiScreenY < canvas.height && sakiScreenY > 0) {
+                        tutorialState = 'START_CONVERSATION';
+                    }
                     break;
+
                 // ★★★ この新しい case を丸ごと追加！ ★★★
                 case 'START_CONVERSATION':
                     showTutorialText("ニャル:「楽しそうだね…」"); // セリフを表示して
@@ -410,45 +428,132 @@
                     }
                     break;
                 case 'STAIN_APPEAR':
-                    demonStain.radius = Math.min(50, demonStain.radius + 0.5);
-                    demonStain.alpha = Math.min(0.8, demonStain.alpha + 0.01);
-                    demonStain.worldY += (demonStain.targetY - demonStain.worldY) * 0.02;
-                    if (stateTimer > 120 && dog.alpha > 0) {
-                        if (stateTimer % 40 < 20) { dog.worldY -= 2; } else { dog.worldY += 2; }
-                        if (stateTimer === 121) showTutorialText("ニャル:「…！ なにあれ…？」");
-                    }
-                    if (stateTimer > 300) {
-                        hideTutorialText();
-                        tutorialState = 'DEMON_GROW';
-                        stateTimer = 0;
-                    }
-                    break;
+                    // 追いかけっこは続いている
+                    updateChaseScene();
+                    // シミがフェードインしながら、だんだん近づいてくる
+                    demonStain.radius = Math.min(50, demonStain.radius + 0.5);
+                    demonStain.alpha = Math.min(0.8, demonStain.alpha + 0.01);
+                    demonStain.worldY += (demonStain.targetY - demonStain.worldY) * 0.02;
+
+                    // 3秒かけて近づいたら、犬が止まるステップへ
+                    if (stateTimer > 180) {
+                        tutorialState = 'DOG_STOPS';
+                        stateTimer = 0;
+                    }
+                    break;
+
+                case 'DOG_STOPS':
+                    // サキちゃんはまだ走り続けているが、犬は止まる
+                    updateSakiMovement();
+
+                    // 1秒（60フレーム）後に犬が吠え始めるステップへ
+                    if (stateTimer > 300) {
+                        tutorialState = 'DOG_BARKS_SAKI_STOPS';
+                        stateTimer = 0;
+                    }
+                    break;
+
+                case 'DOG_BARKS_SAKI_STOPS':
+                    // 犬が吠え始めたら、サキちゃんも止まる
+                    // (ここではSakiとDogの移動関数をどちらも呼ばない)
+
+                    if (stateTimer === 1) showTutorialText("ニャル:「…！ なにあれ…？」");
+
+                    // 犬がシミに向かって吠える
+                    if (dog.alpha > 0) {
+                        if (stateTimer % 40 < 20) { dog.worldY -= 2; } else { dog.worldY += 2; }
+                    }
+
+                    // 2秒間吠えたら、悪魔が実体化するステップへ
+                    if (stateTimer > 120) {
+                        hideTutorialText();
+                        tutorialState = 'DEMON_GROW';
+                        stateTimer = 0;
+                    }
+                    break;
+
                 case 'DEMON_GROW':
+                    // シミが消えながら、ボスがじわっと現れる
                     demonStain.alpha = Math.max(0, demonStain.alpha - 0.02);
                     boss.alpha = Math.min(1, boss.alpha + 0.01);
                     boss.radius = Math.min(boss.maxRadius, boss.radius + 0.2);
-                    if (stateTimer === 1) showTutorialText("ニャル:「うわっ！？なんだ、あの子は…！」");
-                    if (stateTimer === 60) bullets.push(new CoughBullet(boss.worldX, boss.worldY, 0, saki, true));
-                    if (stateTimer > 120) saki.alpha = Math.max(0, saki.alpha - 0.02);
 
-                    if (saki.alpha <= 0 && tutorialState === 'DEMON_GROW') {
-                        stateTimer = 0;
-                        tutorialState = 'DOG_BARKS';
+                    // 演出のセリフ
+                    if (stateTimer === 1) showTutorialText("ニャル:「うわっ！？なんだ、あの子は…！」");
+
+                    // ★★★ タイマーが60になったら、サキちゃんに向けて咳攻撃を発射 ★★★
+                    if (stateTimer === 60) {
+                        // CoughBullet(ボスのX座標, Y座標, 角度, ターゲット, 演出用フラグ)
+                        bullets.push(new CoughBullet(boss.worldX, boss.worldY, 0, saki, true));
                     }
-                    break;
+
+                    // ★★★ 攻撃が当たった後、サキちゃんが消えていく ★★★
+                    // 弾が当たる時間を見越して、タイマー120から消滅を開始
+                    if (stateTimer > 120) {
+                        saki.alpha = Math.max(0, saki.alpha - 0.02);
+                    }
+
+                    // サキちゃんが完全に消えたら、犬が吠えるステップへ
+                    if (saki.alpha <= 0 && tutorialState === 'DEMON_GROW') {
+                        stateTimer = 0;
+                        tutorialState = 'DEMON_EMERGE_FROM_CLOUD'; // ★★★ここを新しい名前に変更！★★★
+                    }
+                    break;
+
+                case 'DEMON_EMERGE_FROM_CLOUD':
+                    // 悪魔をゆっくりとフェードインさせる
+                    // alpha (透明度) を少しずつ上げていく
+                    if (boss.alpha < 1) { // まだ完全に不透明じゃない場合
+                        boss.alpha += 0.01; // 1フレームごとに0.01ずつ透明度を上げる（数字を大きくすると速くなる）
+                        if (boss.alpha > 1) boss.alpha = 1; // 1を超えないように調整
+                    }
+
+                    // お好みで、悪魔のサイズも少し大きくする演出を加えてもいいかも
+                    // boss.radius += (30 - boss.radius) * 0.02; // 例：目標半径30にゆっくり近づける
+
+                    // ある程度の時間が経つか、完全に姿を現したら次のシーンへ
+                    if (stateTimer > 90 || boss.alpha >= 1) { // 90フレーム（約1.5秒）経つか、完全に現れたら
+                        stateTimer = 0;
+                        tutorialState = 'DOG_BARKS'; // 犬が吠える本来のシーンへ
+                    }
+                    break;
+
+                case 'BOSS_ZOOM_IN':
+                    // ボスの目標サイズ。この数字を大きくすればもっとデカくなるよ！
+                    const targetRadius = 40;
+
+                    // じわ～っと目標サイズに近づける処理
+                    boss.radius += (targetRadius - boss.radius) * 0.05;
+
+                    // 2秒くらい経ったら、本来の次のシーン（犬が吠える）に進む
+                    if (stateTimer > 120) {
+                        stateTimer = 0;
+                        tutorialState = 'DOG_BARKS';
+                    }
+                    break;
+
                 case 'DOG_BARKS':
+                    // ボスの方を向いて、3回吠える動き
                     dog.targetX = boss.worldX;
                     dog.worldX += (dog.targetX - dog.worldX) * 0.02;
-                    if (stateTimer % 30 < 15) { dog.worldY -= 3; } else { dog.worldY += 3; }
+                    if (stateTimer % 40 < 20) { dog.worldY -= 3; } else { dog.worldY += 3; }
 
+                    // 3回吠え終わったら（120フレーム後）、犬が攻撃されるステップへ
                     if (stateTimer > 120) {
+                        // ★★★ 犬に向けて咳攻撃を発射 ★★★
                         bullets.push(new CoughBullet(boss.worldX, boss.worldY, 0, dog, false, true));
                         tutorialState = 'DOG_DOWN';
                         stateTimer = 0;
                     }
                     break;
+
                 case 'DOG_DOWN':
-                    if (stateTimer > 30) dog.alpha = Math.max(0, dog.alpha - 0.02);
+                    // 攻撃が当たった後、犬が消えていく
+                    if (stateTimer > 30) {
+                        dog.alpha = Math.max(0, dog.alpha - 0.02);
+                    }
+
+                    // 犬が完全に消えたら、いよいよ戦闘開始
                     if (dog.alpha <= 0 && tutorialState === 'DOG_DOWN') {
                         showTutorialText("ニャル:「気を付けて！まずは動き回って、攻撃をよく見て！」");
                         if (audioStarted) { if (peacefulBGM.state === 'started') peacefulBGM.stop(); if (battleBGM.state !== 'started') battleBGM.start(); }
@@ -521,7 +626,7 @@
             }
 
             // プレイヤーが操作不能になるイベント中以外は、プレイヤーの操作を更新する
-            const playerCanMove = !['WATCHING_PLAY', 'STAIN_APPEAR', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'].includes(tutorialState);
+            const playerCanMove = !['WATCHING_PLAY', 'STAIN_APPEAR', 'DOG_STOPS', 'DOG_BARKS_SAKI_STOPS', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'].includes(tutorialState);
             if (gameState !== 'TITLE' && playerCanMove) {
                 updatePlayer();
             }
@@ -531,25 +636,110 @@
                 updateNyarl();
             }
 
+            // 演出中かバトル中かに関わらず、弾が存在すれば動かす
+            if (bullets.length > 0) {
+                updateBullets();
+            }
+
             // バトル中の処理
             if (gameState === 'TUTORIAL_BATTLE' && boss.isActive) {
-                updateBossAndBullets();
+                handleBattleAttacks();
                 checkCollisions();
             }
-            // ★★★ ここまで ★★★
 
             if (gameState !== 'TITLE') {
-                camera.x += (player.worldX - canvas.width / 2 - camera.x) * 0.1; camera.y += (player.worldY - canvas.height / 2 - camera.y) * 0.1;
-                camera.x = Math.max(0, Math.min(world.width - canvas.width, camera.x)); camera.y = Math.max(0, Math.min(world.height - canvas.height, camera.y));
+                // ★★★ ここからカメラロジックを修正 ★★★
+                let targetX, targetY;
+                const cinematicStates = ['WATCHING_PLAY', 'STAIN_APPEAR', 'DOG_STOPS', 'DOG_BARKS_SAKI_STOPS', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'];
+
+                // 演出中は追いかけっこを、それ以外はプレイヤーをカメラの中心にする
+                if (cinematicStates.includes(tutorialState)) {
+                    targetX = chaseCenter.x;
+                    targetY = chaseCenter.y;
+                } else {
+                    targetX = player.worldX;
+                    targetY = player.worldY;
+                }
+
+                // カメラをターゲットに滑らかに移動させる（移動速度を0.08に少し調整）
+                camera.x += (targetX - canvas.width / 2 - camera.x) * 0.08;
+                camera.y += (targetY - canvas.height / 2 - camera.y) * 0.08;
+
+                // カメラがワールドの範囲外に出ないようにする
+                camera.x = Math.max(0, Math.min(world.width - canvas.width, camera.x));
+                camera.y = Math.max(0, Math.min(world.height - canvas.height, camera.y));
+                // ★★★ カメラロジックの修正はここまで ★★★
 
                 if (gameState === 'CLEAR') { bullets = []; boss.isActive = false; }
                 effects.forEach((e, i) => { e.update(); if (e.life <= 0) effects.splice(i, 1); });
             }
         }
-        function isPositionOnCloud(x, y) { if (!groundCloudCtx) return false; if (x < 0 || x >= world.width || y < 0 || y >= world.height) return false; const pixelData = groundCloudCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data; return pixelData[3] > 0; }
-        function updatePlayer() { if (player.stunTimer > 0) { player.stunTimer--; return; } if (player.shieldBreakTime > 0) { player.shieldBreakTime--; return; } if (player.dodgeTimer > 0) { player.dodgeTimer--; } else player.isDodging = false; if (player.rollTimer > 0) { player.rollTimer--; player.rollAngle += 0.5; } else player.isRolling = false; if (player.dodgeCooldown > 0) player.dodgeCooldown--; player.isGuarding = keys.c && player.shieldGauge > 0; if (player.isGuarding) { if (!isGuardSoundPlaying) { sounds.guard.triggerAttack("C2"); isGuardSoundPlaying = true; } player.shieldGauge -= 0.5; if (player.shieldGauge <= 0) { player.shieldBreakTime = 120; playSound('hit'); } } else { if (isGuardSoundPlaying) { sounds.guard.triggerRelease(); isGuardSoundPlaying = false; } if (player.shieldGauge < 100) player.shieldGauge += 0.3; } let moveX = 0; let moveY = 0; if (player.isRolling) { moveX = player.rollDirection * player.rollSpeed; } else if (!player.isGuarding) { if (keys.w) moveY -= player.speed; if (keys.s) moveY += player.speed; if (keys.a) moveX -= player.speed; if (keys.d) moveX += player.speed; } let nextX = player.worldX + moveX; let nextY = player.worldY + moveY; if (isPositionOnCloud(nextX, player.worldY)) player.worldX = nextX; if (isPositionOnCloud(player.worldX, nextY)) player.worldY = nextY; }
 
-        function updateBossAndBullets() {
+        function isPositionOnCloud(x, y) {
+            if (!groundCloudCtx) return false;
+
+            if (x < 0 || x >= world.width || y < 0 || y >= world.height) return false;
+            const pixelData = groundCloudCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+            return pixelData[3] > 0;
+        }
+        function updatePlayer() {
+            if (player.stunTimer > 0) {
+                player.stunTimer--; return;
+            }
+            if (player.shieldBreakTime > 0) {
+                player.shieldBreakTime--; return;
+            }
+            if (player.dodgeTimer > 0) {
+                player.dodgeTimer--;
+            }
+            else
+                player.isDodging = false;
+
+            if (player.rollTimer > 0) {
+                player.rollTimer--;
+                player.rollAngle += 0.5;
+            }
+            else player.isRolling = false;
+            if (player.dodgeCooldown > 0)
+                player.dodgeCooldown--;
+            player.isGuarding = keys.c && player.shieldGauge > 0;
+
+            if (player.isGuarding) {
+                if (!isGuardSoundPlaying) {
+                    sounds.guard.triggerAttack("C2");
+                    isGuardSoundPlaying = true;
+                }
+                player.shieldGauge -= 0.5;
+                if (player.shieldGauge <= 0) {
+                    player.shieldBreakTime = 120;
+                    playSound('hit');
+                }
+            }
+            else {
+                if (isGuardSoundPlaying) {
+                    sounds.guard.triggerRelease();
+                    isGuardSoundPlaying = false;
+                }
+                if (player.shieldGauge < 100) player.shieldGauge += 0.3;
+            }
+            let moveX = 0; let moveY = 0;
+            if (player.isRolling) {
+                moveX = player.rollDirection * player.rollSpeed;
+            }
+            else if (!player.isGuarding) {
+                if (keys.w) moveY -= player.speed;
+                if (keys.s) moveY += player.speed;
+                if (keys.a) moveX -= player.speed;
+                if (keys.d) moveX += player.speed;
+            }
+            let nextX = player.worldX + moveX;
+            let nextY = player.worldY + moveY;
+            if (isPositionOnCloud(nextX, player.worldY))
+                player.worldX = nextX;
+            if (isPositionOnCloud(player.worldX, nextY)) player.worldY = nextY;
+        }
+
+        function handleBattleAttacks() {
             if (!boss.isActive || boss.isVulnerable) return;
 
             if (tutorialState === 'BATTLE_AVOID_ONLY') {
@@ -566,7 +756,9 @@
                 }
             }
             boss.attackTimer++;
+        }
 
+        function updateBullets() {
             bullets.forEach((b, i) => {
                 b.update();
                 const screenX = b.worldX - camera.x;
@@ -579,6 +771,7 @@
                 }
             });
         }
+
         class CoughBullet {
             constructor(x, y, angle, target = null, isForSaki = false, isForDog = false) {
                 this.worldX = x; this.worldY = y; this.radius = 5; this.speed = 3; this.life = 480; this.target = target; this.isForSaki = isForSaki; this.isForDog = isForDog;
