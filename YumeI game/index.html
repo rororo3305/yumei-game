@@ -337,12 +337,12 @@
             stateTimer = 0; camera = { x: 0, y: 0 };
             player = { worldX: world.width / 2, worldY: world.height * 0.75, width: 48, height: 48, speed: 4, dreamCollapse: 0, shieldGauge: 100, isGuarding: false, shieldBreakTime: 0, isDodging: false, dodgeTimer: 0, dodgeCooldown: 0, isRolling: false, rollTimer: 0, rollSpeed: 9, stunTimer: 0, alpha: 1, rollAngle: 0, rollDirection: 0 };
             nyarl = { worldX: player.worldX - 80, worldY: player.worldY - 30, width: 40, height: 40, targetX: player.worldX, targetY: player.worldY, targetTimer: 0, alpha: 1, distanceState: 'medium', stateTimer: 180, minRadius: 80, maxRadius: 120, };
-            boss = { worldX: world.width / 2, worldY: world.height * 0.20, radius: 0, maxRadius: 25, alpha: 0, color: '#E91E63', coreRadius: 10, coreColor: '#F44336', isActive: false, attackTimer: 0, isCharging: false, chargeTimer: 0, purificationGauge: 0, maxPurificationGauge: 100, isVulnerable: false, vulnerableTimer: 0 }; // ★★★ ボスのY座標をシミのターゲットYに合わせる ★★★
+            boss = { worldX: world.width / 2, worldY: world.height * 0.20, radius: 0, maxRadius: 25, alpha: 0, color: '#E91E63', coreRadius: 10, coreColor: '#F44336', isActive: false, attackTimer: 0, isCharging: false, chargeTimer: 0, purificationGauge: 0, maxPurificationGauge: 100, isVulnerable: false, vulnerableTimer: 0, vy: 0 }; // ★★★ ボスのY座標をシミのターゲットYに合わせる ★★★
 
             chaseCenter = { x: world.width / 2, y: world.height * 0.25 };
             saki = { worldX: chaseCenter.x + 90, worldY: chaseCenter.y, width: 20, height: 30, alpha: 1, orbitAngle: 0, orbitRadius: 70, orbitSpeed: 0.02, centerX: chaseCenter.x, centerY: chaseCenter.y };
             dog = { worldX: chaseCenter.x - 90, worldY: chaseCenter.y, width: 25, height: 20, alpha: 1 };
-            demonStain = { worldX: world.width / 2, worldY: 0, radius: 0, alpha: 0, targetY: world.height * 0.20 };
+            demonStain = { worldX: world.width / 2, worldY: 0, radius: 0, alpha: 0, targetY: world.height * 0.15 };
 
             bullets = []; effects = [];
 
@@ -488,20 +488,25 @@
                     }
                     break;
                 case 'STAIN_APPEAR':
-
-                    updateChaseScene();
+                    updateChaseScene(); // 犬たちは回り続ける
 
                     // シミがフェードインしながら、だんだん近づいてくる
                     demonStain.alpha = Math.min(0.8, demonStain.alpha + 0.005);
                     demonStain.radius = Math.min(40, demonStain.radius + 0.5);
-                    demonStain.worldY += (demonStain.targetY - demonStain.worldY) * 0.005; // ★★★ この一行を追加！ ★★★
+
+                    // シミをアニメーションさせる処理
+                    if (demonStain.worldY < demonStain.targetY) {
+                        demonStain.worldY += 0.7;
+                    } else {
+                        demonStain.worldY = demonStain.targetY;
+                    }
 
                     if (stateTimer === 1) showTutorialText("なにやら、黒いシミが浮かんでいる…");
 
-                    // 3秒間表示したら、犬が止まるステップへ
-                    if (stateTimer > 180) { // 3秒 = 180フレーム
+                    // シミがゴール地点に着いたら、次のシーンに進む
+                    if (demonStain.worldY >= demonStain.targetY) {
                         hideTutorialText();
-                        tutorialState = 'DOG_STOPS_ONLY'; // 犬が止まるシーンへ
+                        tutorialState = 'DOG_STOPS_ONLY';
                         stateTimer = 0;
                     }
                     break;
@@ -569,54 +574,55 @@
                 //     break;
 
                 case 'DEMON_GROW':
-                    // シミの位置は、毎フレームがっちり固定！絶対に動かさない
-                    demonStain.worldY = demonStain.targetY;
+                    // シミの位置は完全に固定
+                    demonStain.worldY = demonStain.targetY;
 
-                    if (stateTimer === 1) {
-                        boss.alpha = 1;
-                        // 悪魔はシミの"ど真ん中"に出現させる
-                        boss.worldY = demonStain.targetY;
-                        boss.radius = 0; // 最初は大きさゼロ
-                        
-                        // ★★★ 上向きの初速を与える（ジャンプ力！） ★★★
-                        boss.vy = -8; // マイナスが大きいほど高くジャンプする
+                    if (stateTimer === 1) {
+                        boss.alpha = 1;
+                        boss.worldY = demonStain.targetY;
+                        boss.radius = 0;
+                        boss.vy = -10; // ★ ジャンプの高さ（マイナスが大きいほど高い）
 
-                        // しぶきを発生させる
-                        const particleCount = 40; 
-                        for (let i = 0; i < particleCount; i++) {
-                            effects.push(new CloudSplashParticle(demonStain.worldX, demonStain.targetY));
-                        }
-                        showTutorialText("ニャル:「うわっ！？なんだ、あの子は…！」");
-                    }
+                        const particleCount = 50;
+                        for (let i = 0; i < particleCount; i++) {
+                            effects.push(new CloudSplashParticle(demonStain.worldX, demonStain.targetY));
+                        }
+                        showTutorialText("ニャル:「うわっ！？なんだ、あの子は…！」");
+                    }
 
-                    // 登場後、物理法則に従って動かす
-                    if (stateTimer > 1) {
-                        // 重力をかけて、だんだん上昇速度を落とす（やがて落下に転じる）
-                        boss.vy += 0.3; // この数字が大きいほど、早く落ちてくる
-                        boss.worldY += boss.vy; // 速度を位置に反映させる
+                    // ★★★ ここからが新しいジャンプ＆落下アニメーション ★★★
+                    if (stateTimer > 1) {
+                        const finalBossY = demonStain.targetY - 50; // ★ 最終的に止まる高さ
 
-                        // ジャンプしながら体を大きくする
-                        const finalRadius = boss.maxRadius + 10;
-                        if (boss.radius < finalRadius) {
-                            boss.radius += (finalRadius - boss.radius) * 0.1;
-                        }
-                    }
+                        // ボスが最終地点より上にいるか、まだ上昇中の場合だけ物理演算を適用
+                        if (boss.worldY < finalBossY || boss.vy < 0) {
+                            boss.vy += 0.4; // ★ 重力の強さ
+                            boss.worldY += boss.vy;
+                        } else {
+                            // 最終地点に落ちてきたら、そこで固定する
+                            boss.worldY = finalBossY;
+                        }
 
-                    // サキちゃんへの攻撃タイミングを調整
-                    if (stateTimer === 30) { // ジャンプの頂点あたりで攻撃
-                        bullets.push(new CoughBullet(boss.worldX, boss.worldY, 0, saki, true));
-                        playSound('cough');
-                    }
-                    // サキちゃんが消える処理
-                    if (stateTimer > 90) {
-                        saki.alpha = Math.max(0, saki.alpha - 0.02);
-                    }
-                    // 次のシーンへ
-                    if (stateTimer > 120 && saki.alpha <= 0) {
-                        stateTimer = 0;
-                        tutorialState = 'DOG_BARKS';
-                    }
-                    break;
+                        // 拡大アニメーション
+                        const finalRadius = boss.maxRadius + 10;
+                        if (boss.radius < finalRadius) {
+                            boss.radius += (finalRadius - boss.radius) * 0.1;
+                        }
+                    }
+
+                    // サキちゃんへの攻撃と消滅、次のシーンへの移行
+                    if (stateTimer === 30) {
+                        bullets.push(new CoughBullet(boss.worldX, boss.worldY, 0, saki, true));
+                        playSound('cough');
+                    }
+                    if (stateTimer > 90) {
+                        saki.alpha = Math.max(0, saki.alpha - 0.02);
+                    }
+                    if (stateTimer > 120 && saki.alpha <= 0) {
+                        stateTimer = 0;
+                        tutorialState = 'DOG_BARKS';
+                    }
+                    break;
 
                 // case 'DEMON_EMERGE_FROM_CLOUD':
                 //     // 悪魔をゆっくりとフェードインさせる
@@ -768,22 +774,22 @@
 
             if (gameState !== 'TITLE') {
                 // 演出中は追いかけっこシーンか、悪魔登場シーンかでカメラのターゲットを分ける
-                const chaseCinematicStates = ['STAIN_APPEAR', 'DOG_STOPS_ONLY', 'SAKI_STOPS_TOO'];
-                const demonCinematicStates = ['DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'];
+                const chaseCinematicStates = ['STAIN_APPEAR', 'DOG_STOPS_ONLY', 'SAKI_STOPS_TOO'];
+                const demonCinematicStates = ['DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'];
 
-                if (chaseCinematicStates.includes(tutorialState)) {
-                    // 追いかけっこ中は、その中心を見る
-                    targetX = chaseCenter.x;
-                    targetY = chaseCenter.y;
-                } else if (demonCinematicStates.includes(tutorialState)) {
-                    // 悪魔登場中は、シミの固定位置を見る
-                    targetX = demonStain.worldX;
-                    targetY = demonStain.targetY;
-                } else {
-                    // それ以外はプレイヤーを見る
-                    targetX = player.worldX;
-                    targetY = player.worldY;
-                }
+                if (chaseCinematicStates.includes(tutorialState)) {
+                    // 追いかけっこ中は、その中心を見る
+                    targetX = chaseCenter.x;
+                    targetY = chaseCenter.y;
+                } else if (demonCinematicStates.includes(tutorialState)) {
+                    // 悪魔登場中は、シミの固定位置を見る
+                    targetX = demonStain.worldX;
+                    targetY = demonStain.targetY;
+                } else {
+                    // それ以外はプレイヤーを見る
+                    targetX = player.worldX;
+                    targetY = player.worldY;
+                }
 
                 // カメラをターゲットに滑らかに移動させる（移動速度を0.08に少し調整）
                 camera.x += (targetX - canvas.width / 2 - camera.x) * 0.08;
@@ -919,23 +925,28 @@
             constructor(x, y) {
                 this.worldX = x;
                 this.worldY = y;
-                this.life = Math.random() * 40 + 20; // 0.5秒～1秒くらいで消える
+                this.life = Math.random() * 50 + 30; // 一瞬だけ表示
                 this.initialLife = this.life;
 
                 const angle = Math.random() * Math.PI * 2;
-                const speed = Math.random() * 4 + 2; // 飛び散る速さ
+                const speed = Math.random() * 6 + 4; // 初速を少しアップ
                 this.vx = Math.cos(angle) * speed;
-                this.vy = Math.sin(angle) * speed;
+                this.vy = Math.sin(angle) * speed - 2; // 最初、少しだけ上に飛び上がる力を与える
 
-                this.radius = Math.random() * 5 + 3;
-                this.color = `rgba(160, 160, 160, ${Math.random() * 0.5 + 0.5})`; // 半透明の白
+                this.radius = Math.random() * 4 + 2; // パーティクルを少し小さく、鋭くする
+                this.color = `rgba(180, 180, 180, ${Math.random() * 0.4 + 0.3})`; // 少し明るく、透明度を高くする
             }
 
             update() {
                 this.worldX += this.vx;
                 this.worldY += this.vy;
-                this.vx *= 0.98; // 少しずつ減速
-                this.vy *= 0.98;
+
+                // ★★★ 重力を追加！ これで下に落ちるようになる ★★★
+                this.vy += 0.15;
+
+                // 空気抵抗で少しずつ減速
+                this.vx *= 0.99;
+
                 this.life--;
             }
 
@@ -945,11 +956,12 @@
 
                 // 命が尽きるにつれて、だんだん透明になって消える
                 ctx.globalAlpha = (this.life / this.initialLife);
+                const lifeRatio = this.life / this.initialLife; // 残り寿命の割合 (1.0 ～ 0.0)
                 ctx.fillStyle = this.color;
                 ctx.beginPath();
                 ctx.arc(x, y, this.radius, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.globalAlpha = 1.0; // 忘れずに戻す
+                ctx.globalAlpha = 1.0;
             }
         }
 
@@ -1063,6 +1075,15 @@
                 });
                 drawUI();
             }
+
+            // //デバッグコード
+            // ctx.fillStyle = 'black';
+            // ctx.font = '20px monospace';
+            // ctx.textAlign = 'left';
+            // ctx.fillText(`Stain worldY: ${Math.round(demonStain.worldY)}`, 10, 580);
+            // ctx.fillText(`Stain targetY: ${demonStain.targetY ? Math.round(demonStain.targetY) : 'undefined'}`, 10, 560); // targetYが存在するかどうかもチェック
+            // ctx.fillText(`Tutorial State: ${tutorialState}`, 10, 540);
+
         }
         function drawPlayer() { const x = player.worldX - camera.x; const y = player.worldY - camera.y; ctx.save(); ctx.translate(x, y); ctx.globalAlpha = (player.isDodging || (player.shieldBreakTime > 0 && Math.floor(stateTimer / 10) % 2 === 0)) ? 0.5 : 1.0; if (player.isRolling) { player.rollAngle += 0.5; ctx.rotate(player.rollAngle); } ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, player.height / 2, player.width / 2.2, player.width / 4, 0, 0, Math.PI * 2); ctx.fill(); if (assets.player.img.complete && assets.player.img.naturalHeight !== 0) { ctx.drawImage(assets.player.img, -player.width / 2, -player.height / 2, player.width, player.height); } else { ctx.fillStyle = player.color || '#4CAF50'; ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height); } ctx.restore(); if (player.isGuarding) { ctx.strokeStyle = `rgba(33, 150, 243, ${player.shieldGauge / 100})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, 25, 15, 0, 0, Math.PI * 2); ctx.stroke(); } if (player.shieldBreakTime > 0) { const dizzyY = y - player.height / 2 - 15; const angle = stateTimer * 0.1; ctx.fillStyle = '#FFEB3B'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; for (let i = 0; i < 3; i++) { const starX = x + Math.cos(angle + i * (Math.PI * 2 / 3)) * 15; const starY = dizzyY + Math.sin(angle + i * (Math.PI * 2 / 3)) * 5; ctx.fillText('★', starX, starY); } } }
         function drawUI() { const uiElements = [document.getElementById('dreamCollapseDisplay'), document.getElementById('shieldDisplay')]; if (gameState === 'TUTORIAL_BATTLE' || gameState === 'CLEAR') { uiElements.forEach(el => el.style.opacity = '1'); } else { uiElements.forEach(el => el.style.opacity = '0'); } document.getElementById('dreamCollapseDisplay').textContent = `心の崩壊度: ${Math.floor(player.dreamCollapse)}%`; document.getElementById('shieldDisplay').textContent = `集中力: ${Math.floor(player.shieldGauge)}%`; if (player.shieldBreakTime > 0) { document.getElementById('shieldDisplay').textContent = "シールドブレイク！"; document.getElementById('shieldDisplay').style.color = "#f44336"; } else { document.getElementById('shieldDisplay').style.color = "#fff"; } }
