@@ -320,6 +320,7 @@
         let stateTimer;
         let camera;
         let player, nyarl, boss, saki, dog, demonStain;
+        let targetX, targetY;
         let bullets;
         let effects;
 
@@ -341,8 +342,8 @@
 
             chaseCenter = { x: world.width / 2, y: world.height * 0.25 };
             saki = { worldX: chaseCenter.x + 90, worldY: chaseCenter.y, width: 20, height: 30, alpha: 1, orbitAngle: 0, orbitRadius: 70, orbitSpeed: 0.02, centerX: chaseCenter.x, centerY: chaseCenter.y };
-            dog = { worldX: chaseCenter.x - 90, worldY: chaseCenter.y, width: 25, height: 20, alpha: 1 };
-            demonStain = { worldX: world.width / 2, worldY: 0, radius: 0, alpha: 0, targetY: world.height * 0.15 };
+            dog = { worldX: chaseCenter.x - 90, worldY: chaseCenter.y, width: 25, height: 20, alpha: 1, isHit: false };
+            demonStain = { worldX: world.width / 2, worldY: 0, radius: 0, alpha: 0, targetY: world.height * 0.10 };
 
             bullets = []; effects = [];
 
@@ -592,7 +593,7 @@
 
                     // ★★★ ここからが新しいジャンプ＆落下アニメーション ★★★
                     if (stateTimer > 1) {
-                        const finalBossY = demonStain.targetY - 50; // ★ 最終的に止まる高さ
+                        const finalBossY = demonStain.targetY; // ★ 最終的に止まる高さ
 
                         // ボスが最終地点より上にいるか、まだ上昇中の場合だけ物理演算を適用
                         if (boss.worldY < finalBossY || boss.vy < 0) {
@@ -673,30 +674,43 @@
                     break;
 
                 case 'DOG_DOWN':
-                    // 攻撃が当たった後、犬が消えていく
-                    if (stateTimer > 30) {
+                    // ★★★ if文の条件を変更！ ★★★
+                    // 弾が当たったら(isHitがtrueになったら)、犬が消え始める
+                    if (dog.isHit) {
                         dog.alpha = Math.max(0, dog.alpha - 0.02);
                     }
 
                     // 犬が完全に消えたら、いよいよ戦闘開始
-                    if (dog.alpha <= 0 && tutorialState === 'DOG_DOWN') {
-                        showTutorialText("ニャル:「気を付けて！まずは動き回って、攻撃をよく見て！」");
-                        if (audioStarted) { if (peacefulBGM.state === 'started') peacefulBGM.stop(); if (battleBGM.state !== 'started') battleBGM.start(); }
-                        boss.isActive = true;
-                        document.getElementById('purificationGaugeContainer').style.opacity = 1;
-                        tutorialState = 'BATTLE_AVOID_ONLY';
-                        stateTimer = 0;
-                        gameState = 'TUTORIAL_BATTLE';
+                    if (dog.alpha <= 0) { // ← ここの条件は .alpha のままでOK
+                        // ... (戦闘開始の処理) ...
                     }
                     break;
                 case 'BATTLE_AVOID_ONLY':
                     if (avoidSuccessCount >= 3) {
-                        isTimeStopped = true;
-                        showTutorialText("ニャル:「今のままじゃ避けきれない！<span>Shiftキー</span>で、その場で素早く回避できるよ！」");
                         tutorialState = 'LESSON_SPOT_DODGE';
+                        stateTimer = 0;
                     }
                     break;
-                case 'LESSON_SPOT_DODGE': break;
+
+                case 'LESSON_SPOT_DODGE':
+                    // 最初の1フレームだけ実行
+                    if (stateTimer === 1) {
+                        showTutorialText("ニャル:「今のままじゃ避けきれない！<span>Shiftキー</span>で、その場で素早く回避できるよ！」");
+
+                        isTimeStopped = true; // 時間を止める！
+
+                        // チュートリアル用の咳攻撃を1発だけ発射
+                        const angle = Math.atan2(player.worldY - boss.worldY, player.worldX - boss.worldX);
+                        bullets.push(new CoughBullet(boss.worldX, boss.worldY, angle, null, false, true)); // isTutorialBulletをtrueに
+                        playSound('cough');
+
+                        tutorialState = 'LESSON_WAIT_FOR_DODGE';
+                    }
+                    break;
+
+                case 'LESSON_WAIT_FOR_DODGE':
+                    // このシーンでは何もしない。弾が止まって、プレイヤーの入力を待つだけ。
+                    break;
                 case 'LESSON_ROLL_DODGE': break;
                 case 'LESSON_GUARD': break;
                 case 'BATTLE_END':
@@ -743,64 +757,56 @@
         }
 
         function update() {
-            if (isTimeStopped) return;
+            // 時間が止まっている時の処理
+            if (isTimeStopped) {
+                // 時間停止中でも、弾とエフェクトだけは更新する
+                updateBullets();
+                effects.forEach((e, i) => { e.update(); if (e.life <= 0) effects.splice(i, 1); });
+                return; // 他の処理はすべてここで止める
+            }
 
-            // ★★★ ここからロジックを整理・修正 ★★★
+            // 通常時の処理（時間が動いている時）
             if (gameState === 'TUTORIAL' || gameState === 'TUTORIAL_BATTLE') {
                 updateTutorial();
             }
-
-            // プレイヤーが操作不能になるイベント中以外は、プレイヤーの操作を更新する
-            const playerCanMove = !['STAIN_APPEAR', 'DOG_STOPS_ONLY', 'SAKI_STOPS_TOO', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'].includes(tutorialState); // ★★★ リストを更新！ ★★★
+            const playerCanMove = !['STAIN_APPEAR', 'DOG_STOPS_ONLY', 'SAKI_STOPS_TOO', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN', 'LESSON_SPOT_DODGE', 'LESSON_WAIT_FOR_DODGE'].includes(tutorialState);
             if (gameState !== 'TITLE' && playerCanMove) {
                 updatePlayer();
             }
-
-            // ニャルを更新
             if (gameState !== 'TITLE') {
                 updateNyarl();
             }
-
-            // 演出中かバトル中かに関わらず、弾が存在すれば動かす
             if (bullets.length > 0) {
                 updateBullets();
             }
-
-            // バトル中の処理
             if (gameState === 'TUTORIAL_BATTLE' && boss.isActive) {
                 handleBattleAttacks();
                 checkCollisions();
             }
-
             if (gameState !== 'TITLE') {
-                // 演出中は追いかけっこシーンか、悪魔登場シーンかでカメラのターゲットを分ける
-                const chaseCinematicStates = ['STAIN_APPEAR', 'DOG_STOPS_ONLY', 'SAKI_STOPS_TOO'];
-                const demonCinematicStates = ['DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'];
+
+                // ★★★ ここから下のカメラ処理を丸ごと追加！ ★★★
+                const chaseCinematicStates = ['STAIN_APPEAR', 'DOG_STOPS_ONLY'];
+                const demonCinematicStates = ['SAKI_STOPS_TOO', 'DEMON_GROW', 'DOG_BARKS', 'DOG_DOWN'];
 
                 if (chaseCinematicStates.includes(tutorialState)) {
-                    // 追いかけっこ中は、その中心を見る
                     targetX = chaseCenter.x;
                     targetY = chaseCenter.y;
                 } else if (demonCinematicStates.includes(tutorialState)) {
-                    // 悪魔登場中は、シミの固定位置を見る
                     targetX = demonStain.worldX;
                     targetY = demonStain.targetY;
                 } else {
-                    // それ以外はプレイヤーを見る
                     targetX = player.worldX;
                     targetY = player.worldY;
                 }
 
-                // カメラをターゲットに滑らかに移動させる（移動速度を0.08に少し調整）
                 camera.x += (targetX - canvas.width / 2 - camera.x) * 0.08;
                 camera.y += (targetY - canvas.height / 2 - camera.y) * 0.08;
-
-                // カメラがワールドの範囲外に出ないようにする
                 camera.x = Math.max(0, Math.min(world.width - canvas.width, camera.x));
                 camera.y = Math.max(0, Math.min(world.height - canvas.height, camera.y));
-                // ★★★ カメラロジックの修正はここまで ★★★
+                // ★★★ 追加はここまで ★★★
 
-                if (gameState === 'CLEAR') { bullets = []; boss.isActive = false; }
+                // ... (カメラの処理はそのまま) ...
                 effects.forEach((e, i) => { e.update(); if (e.life <= 0) effects.splice(i, 1); });
             }
         }
@@ -903,19 +909,52 @@
         }
 
         class CoughBullet {
-            constructor(x, y, angle, target = null, isForSaki = false, isForDog = false) {
-                this.worldX = x; this.worldY = y; this.radius = 5; this.speed = 3; this.life = 480; this.target = target; this.isForSaki = isForSaki; this.isForDog = isForDog;
+            constructor(x, y, angle, target = null, isForSaki = false, isTutorialBullet = false) {
+                this.worldX = x; this.worldY = y; this.radius = 5; this.speed = 3; this.life = 480;
+                this.target = target; this.isForSaki = isForSaki;
+
+                // --- ここからが追加・変更部分 ---
+                this.isTutorialBullet = isTutorialBullet; // チュートリアル用の弾かどうかの目印
+                this.isFrozen = false; // チュートリアル用に停止しているかどうかの目印
+
+                // チュートリアル用の弾なら、スピードを少し遅くする
+                if (this.isTutorialBullet) {
+                    this.speed = 2;
+                }
+                // --- ここまで ---
+
                 if (target) { const targetAngle = Math.atan2(target.worldY - y, target.worldX - x); this.vx = Math.cos(targetAngle) * this.speed; this.vy = Math.sin(targetAngle) * this.speed; }
                 else { this.vx = Math.cos(angle) * this.speed; this.vy = Math.sin(angle) * this.speed; }
             }
+
             update() {
+                // もしチュートリアル弾で、かつフリーズ中なら、ここで動きを止める
+                if (this.isTutorialBullet && this.isFrozen) {
+                    return;
+                }
+
+                // プレイヤーとの距離を計算
+                const distToPlayer = Math.hypot(this.worldX - player.worldX, this.worldY - player.worldY);
+
+                // もしチュートリアル弾で、プレイヤーの近くまで来たらフリーズする
+                if (this.isTutorialBullet && distToPlayer < 50) { // 50ピクセル手前で止まる
+                    this.isFrozen = true;
+                    return; // 動きを止める
+                }
+
+                // 通常の移動処理
                 this.worldX += this.vx; this.worldY += this.vy; this.radius += 0.05;
                 this.life--;
                 if (this.target && this.target.alpha > 0 && Math.hypot(this.worldX - this.target.worldX, this.worldY - this.target.worldY) < 20) {
-                    this.target.alpha = 0;
-                    this.life = 0;
+                    if (this.target.isHit !== undefined) {
+                        this.target.isHit = true; // ターゲットの isHit フラグを立てる
+                    } else {
+                        this.target.alpha = 0; // isHit がないターゲットは即死
+                    }
+                    this.life = 0; // 弾は消える
                 }
             }
+
             draw(ctx, camera) { const x = this.worldX - camera.x; const y = this.worldY - camera.y; const alpha = Math.min(1, this.life / 60); ctx.beginPath(); ctx.fillStyle = `rgba(139, 195, 74, ${0.4 * alpha})`; ctx.arc(x, y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.fillStyle = `rgba(205, 220, 57, ${0.3 * alpha})`; ctx.arc(x, y, this.radius * 0.6, 0, Math.PI * 2); ctx.fill(); }
         }
         function createGaugeEffect() { for (let i = 0; i < 5; i++) { effects.push(new GaugeParticle(player.worldX, player.worldY)); } }
@@ -965,22 +1004,48 @@
             }
         }
 
+        class ScreenFlash {
+            constructor() {
+                this.life = 20; // 1/3秒くらいで消える
+            }
+            update() {
+                this.life--;
+            }
+            draw(ctx, camera) {
+                // 画面全体を、だんだん透明になる白い四角形で覆う
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.life / 20 * 0.7})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
         function checkCollisions() {
+
             if (!boss.isActive) return;
+
             bullets.forEach((b, i) => {
                 if (b.isForSaki || b.isForDog) return;
                 const dist = Math.hypot(player.worldX - b.worldX, player.worldY - b.worldY);
                 if (dist < player.width / 2 + b.radius) {
-                    if (player.isDodging || player.isRolling) {
-                        // ★★★ 横回避の成功判定と次のステップへの移行 ★★★
-                        if (tutorialState === 'LESSON_ROLL_DODGE') {
-                            isTimeStopped = false; hideTutorialText();
-                            setTimeout(() => {
+                    if (player.isDodging) { // "その場回避" の場合
+                        // ★★★ この一行を追加！ ★★★
+                        if (tutorialState === 'LESSON_SPOT_DODGE') {
+                            // まだ時間が止まっていなければ、時間停止処理を開始
+                            if (!isTimeStopped) {
                                 isTimeStopped = true;
-                                showTutorialText("ニャル:「最後だよ！<span>Cキー</span>を長押しして、攻撃から身を守るんだ！」");
-                                tutorialState = 'LESSON_GUARD';
-                            }, 500);
-                        }
+                                playSound('parry');
+                                effects.push(new ScreenFlash());
+
+                                // 1.5秒後に時間停止を解除
+                                setTimeout(() => {
+                                    isTimeStopped = false;
+                                }, 1500);
+                            }
+                        } // ★★★ 追加したif文の閉じカッコ ★★★
+                        bullets.splice(i, 1);
+                        return;
+                    }
+                    else if (player.isRolling) {
+                        bullets.splice(i, 1);
                         return;
                     }
                     if (player.isGuarding) { } else { playSound('hit'); }
@@ -1076,13 +1141,12 @@
                 drawUI();
             }
 
-            // //デバッグコード
-            // ctx.fillStyle = 'black';
-            // ctx.font = '20px monospace';
-            // ctx.textAlign = 'left';
-            // ctx.fillText(`Stain worldY: ${Math.round(demonStain.worldY)}`, 10, 580);
-            // ctx.fillText(`Stain targetY: ${demonStain.targetY ? Math.round(demonStain.targetY) : 'undefined'}`, 10, 560); // targetYが存在するかどうかもチェック
-            // ctx.fillText(`Tutorial State: ${tutorialState}`, 10, 540);
+            // ★★★ このデバッグコードを draw() 関数の最後に追加！ ★★★
+            ctx.fillStyle = 'lime'; // 見やすいように緑色で
+            ctx.font = '20px monospace';
+            ctx.textAlign = 'right'; // 右下に表示
+            ctx.fillText(`Dog alpha: ${dog.alpha.toFixed(2)}`, 790, 580);
+            ctx.fillText(`State: ${tutorialState}`, 790, 560);
 
         }
         function drawPlayer() { const x = player.worldX - camera.x; const y = player.worldY - camera.y; ctx.save(); ctx.translate(x, y); ctx.globalAlpha = (player.isDodging || (player.shieldBreakTime > 0 && Math.floor(stateTimer / 10) % 2 === 0)) ? 0.5 : 1.0; if (player.isRolling) { player.rollAngle += 0.5; ctx.rotate(player.rollAngle); } ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(0, player.height / 2, player.width / 2.2, player.width / 4, 0, 0, Math.PI * 2); ctx.fill(); if (assets.player.img.complete && assets.player.img.naturalHeight !== 0) { ctx.drawImage(assets.player.img, -player.width / 2, -player.height / 2, player.width, player.height); } else { ctx.fillStyle = player.color || '#4CAF50'; ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height); } ctx.restore(); if (player.isGuarding) { ctx.strokeStyle = `rgba(33, 150, 243, ${player.shieldGauge / 100})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, 25, 15, 0, 0, Math.PI * 2); ctx.stroke(); } if (player.shieldBreakTime > 0) { const dizzyY = y - player.height / 2 - 15; const angle = stateTimer * 0.1; ctx.fillStyle = '#FFEB3B'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center'; for (let i = 0; i < 3; i++) { const starX = x + Math.cos(angle + i * (Math.PI * 2 / 3)) * 15; const starY = dizzyY + Math.sin(angle + i * (Math.PI * 2 / 3)) * 5; ctx.fillText('★', starX, starY); } } }
@@ -1123,13 +1187,21 @@
             keys[lowerKey] = true;
 
             if (key === 'Shift' && !player.isDodging && !player.isRolling && player.stunTimer <= 0 && player.dodgeCooldown <= 0) {
-                if (tutorialState === 'LESSON_SPOT_DODGE' && !(keys.a || keys.d)) {
-                    isTimeStopped = false; hideTutorialText();
-                    // ★★★ 成功判定を checkCollisions に移動したため、ここでの state 変更は不要に ★★★
-                }
-                if (tutorialState === 'LESSON_ROLL_DODGE' && (keys.a || keys.d)) {
-                    isTimeStopped = false; hideTutorialText();
-                    // ★★★ 成功判定を checkCollisions に移動 ★★★
+
+                // まずは「回避レッスンの真っ最中か？」をチェック
+                if (tutorialState === 'LESSON_WAIT_FOR_DODGE') {
+                    const tutorialBullet = bullets.find(b => b.isTutorialBullet);
+                    // もしチュートリアル弾が目の前で止まっているなら…
+                    if (tutorialBullet && tutorialBullet.isFrozen) {
+                        // チュートリアル成功の処理！
+                        isTimeStopped = false; // 時間を動かす
+                        effects.push(new ScreenFlash());
+                        playSound('parry');
+                        bullets = [];
+                        showTutorialText("ニャル:「うまい！その調子！」");
+                        tutorialState = 'LESSON_ROLL_DODGE'; // 次のレッスンへ
+                        return; // ← ここで処理を終わらせて、下の普通の回避はしない
+                    }
                 }
 
                 playSound('dodge');
